@@ -1,6 +1,6 @@
-"""jev-broker: confidence-governed decision broker over TypeSafe's Jev model."""
+"""n4c-decision-broker: confidence-governed decision broker over TypeSafe's Jev model."""
 
-from jev_broker.models import (
+from n4c_decision_broker.models import (
     AnswerResult,
     BrokerRequest,
     BrokerResponse,
@@ -10,17 +10,17 @@ from jev_broker.models import (
     QuestionType,
     state_sha256,
 )
-from jev_broker.decision import (
+from n4c_decision_broker.decision import (
     Routing,
     choice_confidence,
     route_answer,
     score_confidence,
 )
-from jev_broker.client import JevAPIError, JevClient, OllamaAPIError, OllamaClient
-from jev_broker.fallback import EscalationBackend, HoldBackend, LLMFallbackBackend
-from jev_broker.cache import DecisionCache
-from jev_broker.audit import AuditLog
-from jev_broker.broker import ModelBroker
+from n4c_decision_broker.client import JevAPIError, JevClient, OllamaAPIError, OllamaClient
+from n4c_decision_broker.fallback import EscalationBackend, HoldBackend, LLMFallbackBackend
+from n4c_decision_broker.cache import DecisionCache
+from n4c_decision_broker.audit import AuditLog
+from n4c_decision_broker.broker import ModelBroker
 
 __version__ = "0.1.0"
 

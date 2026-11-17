@@ -1,4 +1,4 @@
-# jev-broker
+# n4c-decision-broker
 
 **Confidence-governed model broker** for *System One* decision models served **locally by
 [Ollama](https://docs.ollama.com/capabilities/decision)** (default: `nimble`, 9B). The model
@@ -7,7 +7,7 @@ answers with probability distributions and a confidence value**. The API
 (`POST /v1/systemone`) is Jev-compatible, so hosted Jev or Ollama cloud models also work by
 changing the base URL.
 
-`jev-broker` wraps Jev in a governance layer for production use inside NFDI4Culture
+`n4c-decision-broker` wraps the model in a governance layer for production use inside NFDI4Culture
 pipelines:
 
 ```
@@ -43,13 +43,13 @@ pipelines:
 python3 -m venv .venv
 .venv/bin/pip install -e ".[server,dev]"
 ollama pull nimble            # needs Ollama >= 0.35; no API key required
-# optional: OLLAMA_HOST / JEV_BROKER_BASE_URL, JEV_BROKER_MODEL (see .env.example)
+# optional: OLLAMA_HOST / N4C_BROKER_BASE_URL, N4C_BROKER_MODEL (see .env.example)
 ```
 
 ## Python API
 
 ```python
-from jev_broker import ModelBroker, QuestionSpec, QuestionPolicy, JevClient
+from n4c_decision_broker import ModelBroker, QuestionSpec, QuestionPolicy, JevClient
 
 broker = ModelBroker(
     client=JevClient(model="nimble"),   # local Ollama (alias: OllamaClient)
@@ -84,30 +84,30 @@ results = broker.batch(records, questions=questions)
 
 ```bash
 # Single decision (local Nimble call)
-jev-broker decide \
+n4c-decision-broker decide \
   --state "Kupferstich, Ansicht von Rom, 17. Jh." \
   --choice period=Historical period of the object|early_modern:1400-1800|modern:1800-1945|contemporary:1945-present \
   --noul open_access=The record contains no personal data and no rights issues
 
 # Questions from JSON instead of flags
-jev-broker decide --state "..." --questions-file examples/questions.example.json
+n4c-decision-broker decide --state "..." --questions-file examples/questions.example.json
 
 # Offline demo (no API key needed) — shows decided / review / escalated paths
-jev-broker demo
+n4c-decision-broker demo
 
 # Batch enrich records from JSON, write results to JSONL
-jev-broker batch --input examples/records.example.json \
+n4c-decision-broker batch --input examples/records.example.json \
                  --questions-file examples/questions.example.json --out audit/batch.jsonl
 
 # Introspection
-jev-broker metrics
-jev-broker audit --limit 10
+n4c-decision-broker metrics
+n4c-decision-broker audit --limit 10
 ```
 
 ## REST server
 
 ```bash
-jev-broker serve --host 127.0.0.1 --port 8787
+n4c-decision-broker serve --host 127.0.0.1 --port 8787
 ```
 
 | Endpoint | Description |

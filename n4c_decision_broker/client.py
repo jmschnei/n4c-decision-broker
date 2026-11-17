@@ -19,7 +19,7 @@ import json
 import os
 from typing import Any, Mapping, Optional, Union
 
-from jev_broker.models import QuestionSpec
+from n4c_decision_broker.models import QuestionSpec
 
 __all__ = ["JevAPIError", "OllamaAPIError", "JevClient", "OllamaClient"]
 
@@ -28,8 +28,8 @@ DEFAULT_MODEL = "nimble"
 
 
 def default_base_url() -> str:
-    """JEV_BROKER_BASE_URL, then OLLAMA_HOST, then the local Ollama default."""
-    url = os.environ.get("JEV_BROKER_BASE_URL") or os.environ.get("OLLAMA_HOST") or DEFAULT_BASE_URL
+    """N4C_BROKER_BASE_URL, then OLLAMA_HOST, then the local Ollama default."""
+    url = os.environ.get("N4C_BROKER_BASE_URL") or os.environ.get("OLLAMA_HOST") or DEFAULT_BASE_URL
     if not url.startswith(("http://", "https://")):
         url = f"http://{url}"
     return url.rstrip("/")
@@ -64,7 +64,7 @@ class OllamaClient:
 
         base_url = base_url or default_base_url()
         self.api_key = api_key or os.environ.get("OLLAMA_API_KEY")  # only for cloud models
-        self.model = model or os.environ.get("JEV_BROKER_MODEL") or DEFAULT_MODEL
+        self.model = model or os.environ.get("N4C_BROKER_MODEL") or DEFAULT_MODEL
         self.keep_alive = keep_alive
         self.timeout = timeout
         headers = {"Content-Type": "application/json"}

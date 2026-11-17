@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from jev_broker import (
+from n4c_decision_broker import (
     AuditLog,
     DecisionCache,
     HoldBackend,

@@ -1,4 +1,4 @@
-"""jev-broker command line interface."""
+"""n4c-decision-broker command line interface."""
 from __future__ import annotations
 
 import argparse
@@ -7,14 +7,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from jev_broker import __version__
-from jev_broker.audit import AuditLog
-from jev_broker.broker import ModelBroker
-from jev_broker.cache import DecisionCache
-from jev_broker.client import OllamaClient as JevClient
-from jev_broker.fallback import HoldBackend, LLMFallbackBackend
-from jev_broker.models import QuestionPolicy, QuestionSpec
-from jev_broker.testing import FakeJev, demo_questions, demo_records
+from n4c_decision_broker import __version__
+from n4c_decision_broker.audit import AuditLog
+from n4c_decision_broker.broker import ModelBroker
+from n4c_decision_broker.cache import DecisionCache
+from n4c_decision_broker.client import OllamaClient as JevClient
+from n4c_decision_broker.fallback import HoldBackend, LLMFallbackBackend
+from n4c_decision_broker.models import QuestionPolicy, QuestionSpec
+from n4c_decision_broker.testing import FakeJev, demo_questions, demo_records
 
 
 def _split_head(spec: str, flag: str) -> tuple[str, str, list[str]]:
@@ -86,7 +86,7 @@ def _build_broker(args: argparse.Namespace, offline: bool = False) -> ModelBroke
     audit = AuditLog(Path(args.audit_log))
     cache = DecisionCache(path=Path(args.cache_file)) if not args.no_cache else None
     if offline:
-        client: Any = FakeJev(seed="jev-broker-demo")
+        client: Any = FakeJev(seed="n4c-decision-broker-demo")
         fallback: Any = HoldBackend()
     else:
         client = JevClient(model=args.model)
@@ -164,9 +164,9 @@ def cmd_batch(args: argparse.Namespace) -> int:
 def cmd_serve(args: argparse.Namespace) -> int:
     try:
         import uvicorn
-        from jev_broker.server import create_app
+        from n4c_decision_broker.server import create_app
     except ImportError as exc:
-        raise SystemExit("server extras missing — install with: pip install 'jev-broker[server]'") from exc
+        raise SystemExit("server extras missing — install with: pip install 'n4c-decision-broker[server]'") from exc
     broker = _build_broker(args)
     uvicorn.run(create_app(broker), host=args.host, port=args.port, log_level="info")
     return 0
@@ -190,8 +190,8 @@ def cmd_audit(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="jev-broker", description="Confidence-governed broker over local Ollama System One models (e.g. nimble)")
-    parser.add_argument("--version", action="version", version=f"jev-broker {__version__}")
+    parser = argparse.ArgumentParser(prog="n4c-decision-broker", description="Confidence-governed broker over local Ollama System One models (e.g. nimble)")
+    parser.add_argument("--version", action="version", version=f"n4c-decision-broker {__version__}")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     def add_common(p: argparse.ArgumentParser) -> None:

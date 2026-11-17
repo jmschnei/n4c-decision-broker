@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from jev_broker import (
+from n4c_decision_broker import (
     AuditLog,
     DecisionCache,
     HoldBackend,
@@ -12,7 +12,7 @@ from jev_broker import (
     QuestionPolicy,
     QuestionSpec,
 )
-from jev_broker.testing import FakeJev
+from n4c_decision_broker.testing import FakeJev
 
 POLICY = QuestionPolicy(auto_threshold=0.85, review_threshold=0.5)
 

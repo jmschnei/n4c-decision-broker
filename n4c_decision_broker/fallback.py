@@ -14,7 +14,7 @@ import re
 from abc import ABC, abstractmethod
 from typing import Any, Mapping, Optional, Union
 
-from jev_broker.models import QuestionSpec
+from n4c_decision_broker.models import QuestionSpec
 
 __all__ = ["EscalationBackend", "HoldBackend", "LLMFallbackBackend", "extract_json_object"]
 

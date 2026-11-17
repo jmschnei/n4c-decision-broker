@@ -6,8 +6,8 @@ import json
 import random
 from typing import Any, Union
 
-from jev_broker.decision import choice_confidence, score_confidence
-from jev_broker.models import QuestionSpec
+from n4c_decision_broker.decision import choice_confidence, score_confidence
+from n4c_decision_broker.models import QuestionSpec
 
 __all__ = ["FakeJev", "demo_questions", "demo_records"]
 
@@ -20,7 +20,7 @@ class FakeJev:
     Noul values are drawn uniformly (covers yes/no/review bands).
     """
 
-    def __init__(self, seed: str = "jev-broker"):
+    def __init__(self, seed: str = "n4c-decision-broker"):
         self.seed = seed
         self.last_request: Union[tuple, None] = None
         self.fail_next: bool = False

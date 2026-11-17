@@ -14,10 +14,10 @@ test:
 	$(PY) -m pytest -q
 
 demo:
-	$(PY) -m jev_broker.cli demo
+	$(PY) -m n4c_decision_broker.cli demo
 
 serve:
-	$(PY) -m jev_broker.cli serve
+	$(PY) -m n4c_decision_broker.cli serve
 
 clean:
 	rm -rf .pytest_cache dist build *.egg-info

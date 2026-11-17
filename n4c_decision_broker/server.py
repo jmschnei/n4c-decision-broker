@@ -5,9 +5,9 @@ from typing import Any, Union
 
 from pydantic import BaseModel, Field
 
-from jev_broker import __version__
-from jev_broker.broker import ModelBroker
-from jev_broker.models import BrokerResponse, QuestionPolicy, QuestionSpec
+from n4c_decision_broker import __version__
+from n4c_decision_broker.broker import ModelBroker
+from n4c_decision_broker.models import BrokerResponse, QuestionPolicy, QuestionSpec
 
 __all__ = ["BrokerRequestBody", "BatchRequestBody", "create_app"]
 
@@ -30,14 +30,14 @@ def create_app(broker: ModelBroker):
         from fastapi import FastAPI, HTTPException
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
-            "FastAPI is not installed. Install with: pip install 'jev-broker[server]'"
+            "FastAPI is not installed. Install with: pip install 'n4c-decision-broker[server]'"
         ) from exc
 
-    app = FastAPI(title="Jev Model Broker", version=__version__)
+    app = FastAPI(title="N4C Decision Broker", version=__version__)
 
     @app.get("/v1/broker/health")
     def health() -> dict[str, Any]:
-        return {"status": "ok", "service": "jev-broker", "version": __version__}
+        return {"status": "ok", "service": "n4c-decision-broker", "version": __version__}
 
     @app.post("/v1/broker/decide", response_model=BrokerResponse)
     def decide(body: BrokerRequestBody) -> BrokerResponse:

@@ -4,8 +4,8 @@ import json
 import httpx
 import pytest
 
-from jev_broker.client import JevAPIError, JevClient
-from jev_broker.models import QuestionSpec
+from n4c_decision_broker.client import JevAPIError, JevClient
+from n4c_decision_broker.models import QuestionSpec
 
 
 def make_client(handler):
@@ -114,9 +114,9 @@ def test_extract_answers_ollama_flat_layout():
 
 
 def test_defaults_and_env(monkeypatch):
-    monkeypatch.delenv("JEV_BROKER_BASE_URL", raising=False)
+    monkeypatch.delenv("N4C_BROKER_BASE_URL", raising=False)
     monkeypatch.setenv("OLLAMA_HOST", "127.0.0.1:9999")
-    monkeypatch.setenv("JEV_BROKER_MODEL", "other")
+    monkeypatch.setenv("N4C_BROKER_MODEL", "other")
     c = JevClient()
     assert str(c._http.base_url).rstrip("/") == "http://127.0.0.1:9999"
     assert c.model == "other" and c.api_key is None

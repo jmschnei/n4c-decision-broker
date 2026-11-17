@@ -9,7 +9,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Optional, Union
 
-from jev_broker.models import AnswerResult, QuestionPolicy, QuestionSpec, state_sha256, stable_json
+from n4c_decision_broker.models import AnswerResult, QuestionPolicy, QuestionSpec, state_sha256, stable_json
 
 __all__ = ["DecisionCache", "cache_key"]
 

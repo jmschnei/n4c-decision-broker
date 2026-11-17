@@ -1,6 +1,6 @@
 """Decision engine: confidence routing for choice / score / noul."""
-from jev_broker.decision import choice_confidence, route_answer, score_confidence
-from jev_broker.models import QuestionPolicy, QuestionSpec
+from n4c_decision_broker.decision import choice_confidence, route_answer, score_confidence
+from n4c_decision_broker.models import QuestionPolicy, QuestionSpec
 
 POLICY = QuestionPolicy(auto_threshold=0.85, review_threshold=0.5)
 

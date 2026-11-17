@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from jev_broker.models import QuestionPolicy, QuestionSpec
+from n4c_decision_broker.models import QuestionPolicy, QuestionSpec
 
 __all__ = ["Routing", "choice_confidence", "score_confidence", "route_answer"]
 
