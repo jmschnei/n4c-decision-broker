@@ -40,6 +40,6 @@ jobs:
           if docker run --rm n4c-decision-broker; then echo "should have failed"; exit 1; fi
       - name: Starts and serves health
         run: |
-          docker run -d --name b -p 8787:8787 -e N4C_BROKER_API_KEYS=ci n4c-decision-broker
+          docker run -d --name n4c-broker -p 8787:8787 -e N4C_BROKER_API_KEYS=ci n4c-decision-broker
           for i in $(seq 1 15); do curl -fs localhost:8787/v1/broker/health && exit 0; sleep 1; done
-          docker logs b; exit 1
+          docker logs n4c-broker; exit 1
