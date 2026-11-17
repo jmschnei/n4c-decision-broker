@@ -128,6 +128,22 @@ n4c-decision-broker serve --host 0.0.0.0
 | `GET  /v1/broker/metrics` | Calls, errors, cache stats, policy |
 | `GET  /v1/broker/audit?limit=20` | Recent audit entries |
 
+## Docker
+
+```bash
+export N4C_BROKER_API_KEYS=$(python3 -c "import secrets;print(secrets.token_urlsafe(32))")
+docker compose up --build        # broker on :8787, Ollama expected on the host
+```
+
+The image runs as a non-root user, persists the audit log/cache in the `broker-audit`
+volume and reaches Ollama through `OLLAMA_HOST` (default `http://host.docker.internal:11434`).
+Without `N4C_BROKER_API_KEYS` the container refuses to start.
+Plain Docker: `docker run -p 8787:8787 -e N4C_BROKER_API_KEYS=... n4c-decision-broker`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
 ## Robustness
 
 - **Retries:** the client retries connection errors and HTTP 408/425/429/5xx with exponential

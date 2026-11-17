@@ -28,3 +28,18 @@ jobs:
         run: python -m pytest -q
       - name: CLI smoke test
         run: n4c-decision-broker demo --no-cache --audit-log /tmp/audit.jsonl
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t n4c-decision-broker .
+      - name: Refuses to start without API keys
+        run: |
+          if docker run --rm n4c-decision-broker; then echo "should have failed"; exit 1; fi
+      - name: Starts and serves health
+        run: |
+          docker run -d --name b -p 8787:8787 -e N4C_BROKER_API_KEYS=ci n4c-decision-broker
+          for i in $(seq 1 15); do curl -fs localhost:8787/v1/broker/health && exit 0; sleep 1; done
+          docker logs b; exit 1

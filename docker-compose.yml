@@ -1,0 +1,20 @@
+services:
+  broker:
+    build: .
+    image: n4c-decision-broker
+    ports:
+      - "8787:8787"
+    environment:
+      # required, comma-separated (generate: python3 -c "import secrets;print(secrets.token_urlsafe(32))")
+      N4C_BROKER_API_KEYS: ${N4C_BROKER_API_KEYS:?set N4C_BROKER_API_KEYS}
+      # Ollama on the host (macOS/Windows); on Linux the extra_hosts entry below makes this resolve.
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      N4C_BROKER_MODEL: ${N4C_BROKER_MODEL:-nimble}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - broker-audit:/data/audit
+    restart: unless-stopped
+
+volumes:
+  broker-audit:
