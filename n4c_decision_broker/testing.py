@@ -25,6 +25,9 @@ class FakeJev:
         self.last_request: Union[tuple, None] = None
         self.fail_next: bool = False
 
+    def close(self) -> None:  # JevClient lookalike
+        pass
+
     def _state_text(self, state: Union[str, dict, list]) -> str:
         return state if isinstance(state, str) else json.dumps(state, sort_keys=True, default=str)
 

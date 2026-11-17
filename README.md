@@ -110,6 +110,16 @@ n4c-decision-broker audit --limit 10
 n4c-decision-broker serve --host 127.0.0.1 --port 8787
 ```
 
+**Authentication.** Set `N4C_BROKER_API_KEYS` (comma-separated, several keys allow rotation)
+and send `Authorization: Bearer <key>` or `X-API-Key: <key>`. Everything except
+`/v1/broker/health` requires a key. `serve` refuses to bind to a non-loopback host
+without keys; on `127.0.0.1` it runs open with a warning.
+
+```bash
+export N4C_BROKER_API_KEYS=$(python3 -c "import secrets;print(secrets.token_urlsafe(32))")
+n4c-decision-broker serve --host 0.0.0.0
+```
+
 | Endpoint | Description |
 |---|---|
 | `POST /v1/broker/decide` | Single decision (body: `state`, `questions`, optional `policy`) |

@@ -193,11 +193,19 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
 def cmd_serve(args: argparse.Namespace) -> int:
     try:
         import uvicorn
-        from n4c_decision_broker.server import create_app
+        from n4c_decision_broker.server import create_app, load_api_keys
     except ImportError as exc:
         raise SystemExit("server extras missing — install with: pip install 'n4c-decision-broker[server]'") from exc
+    keys = load_api_keys()
+    if not keys and args.host not in ("127.0.0.1", "localhost", "::1"):
+        raise SystemExit(
+            f"refusing to listen on {args.host} without authentication: "
+            "set N4C_BROKER_API_KEYS (comma-separated) or bind to 127.0.0.1"
+        )
+    if not keys:
+        print("warning: no N4C_BROKER_API_KEYS set — REST API is unauthenticated (loopback only)", file=sys.stderr)
     broker = _build_broker(args)
-    uvicorn.run(create_app(broker), host=args.host, port=args.port, log_level="info")
+    uvicorn.run(create_app(broker, api_keys=keys), host=args.host, port=args.port, log_level="info")
     return 0
 
 
