@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jev-broker"
+version = "0.1.0"
+description = "Confidence-governed model broker over local Ollama System One decision models such as Nimble (NFDI4Culture)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Julian Moreno Schneider"}]
+keywords = ["nfdi4culture", "model-broker", "jev", "ollama", "nimble", "system-one", "calibrated-decisions", "rlcd"]
+dependencies = [
+    "httpx>=0.27",
+    "pydantic>=2.7",
+]
+
+[project.optional-dependencies]
+server = ["fastapi>=0.110", "uvicorn[standard]>=0.29"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+jev-broker = "jev_broker.cli:main"
+
+[tool.setuptools]
+packages = ["jev_broker"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

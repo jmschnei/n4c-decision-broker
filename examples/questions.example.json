@@ -1,0 +1,31 @@
+[
+  {
+    "id": "period",
+    "type": "choice",
+    "instructions": "Historical period of the object described in the record",
+    "criteria": {
+      "antique": "Classical antiquity (before 500 CE)",
+      "medieval": "Medieval (500-1400)",
+      "early_modern": "Early modern (1400-1800)",
+      "modern": "Modern (1800-1945)",
+      "contemporary": "Contemporary (1945-present)"
+    }
+  },
+  {
+    "id": "language",
+    "type": "choice",
+    "instructions": "Primary language of the record text",
+    "criteria": {
+      "de": "German",
+      "en": "English",
+      "fr": "French",
+      "la": "Latin",
+      "other": "Anything else"
+    }
+  },
+  {
+    "id": "open_access",
+    "type": "noul",
+    "instructions": "The record contains no personal data, no rights issues, and no restrictions on reuse"
+  }
+]

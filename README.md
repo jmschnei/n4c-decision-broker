@@ -1,0 +1,152 @@
+# jev-broker
+
+**Confidence-governed model broker** for *System One* decision models served **locally by
+[Ollama](https://docs.ollama.com/capabilities/decision)** (default: `nimble`, 9B). The model
+evaluates typed questions (Choice / Score / Noul) against a *state* and returns **typed
+answers with probability distributions and a confidence value**. The API
+(`POST /v1/systemone`) is Jev-compatible, so hosted Jev or Ollama cloud models also work by
+changing the base URL.
+
+`jev-broker` wraps Jev in a governance layer for production use inside NFDI4Culture
+pipelines:
+
+```
+        ┌────────────┐  state + questions  ┌────────────┐
+ app ──▶│  broker    │ ───────────────────▶ │   Ollama  │
+        │ (this pkg) │ ◀─────────────────── │ ollama local│
+        └─────┬──────┘   answers+confidence └────────────┘
+              │ confidence routing per question
+   ┌──────────┼──────────────────────────────┐
+   ▼          ▼                              ▼
+ decided    review (flagged)            escalated
+  auto       human-confirm queue      fallback LLM or human hold
+   │          │                              │
+   └──────────┴──────────────┬───────────────┘
+                             ▼
+                  cache · audit log · metrics
+```
+
+## Why a broker, not a direct API call?
+
+| Concern | How the broker handles it |
+|---|---|
+| **Calibrated uncertainty** | Every answer is routed by confidence: `decided` (act), `review` (flag for confirmation), `escalated` (model is unsure) |
+| **Fallback** | Escalated questions can be re-asked to an OpenAI-compatible LLM (non-calibrated, clearly marked) or held for a human |
+| **Noul semantics** | Noul values are probabilities: ≥ 0.7 → yes, ≤ 0.3 → no, in between → review band (per TypeSafe docs) |
+| **Cost** | One Ollama call evaluates *all* questions for a state in parallel; identical states are served from cache |
+| **Traceability (NFDI)** | JSONL audit log of every decision: status, probabilities, confidence, thresholds, route, latency |
+| **Batch enrichment** | `broker.batch()` for enriching whole collections (e.g. museum catalog records) |
+
+## Install
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e ".[server,dev]"
+ollama pull nimble            # needs Ollama >= 0.35; no API key required
+# optional: OLLAMA_HOST / JEV_BROKER_BASE_URL, JEV_BROKER_MODEL (see .env.example)
+```
+
+## Python API
+
+```python
+from jev_broker import ModelBroker, QuestionSpec, QuestionPolicy, JevClient
+
+broker = ModelBroker(
+    client=JevClient(model="nimble"),   # local Ollama (alias: OllamaClient)
+    policy=QuestionPolicy(auto_threshold=0.85, review_threshold=0.5),
+)
+
+resp = broker.decide(
+    state="Record #42: 'Kupferstich, Ansicht von Rom, 17. Jh.'",
+    questions=[
+        QuestionSpec(id="period", type="choice",
+                     instructions="Historical period of the object",
+                     criteria={"early_modern": "1500-1800",
+                               "modern": "1800-1945",
+                               "contemporary": "1945-present"}),
+        QuestionSpec(id="open_access", type="noul",
+                     instructions="The record contains no personal data and no rights issues"),
+    ],
+)
+
+for a in resp.answers:
+    print(a.question_id, a.status, a.choice or a.noul_label, a.confidence, a.source)
+```
+
+Batch over a collection:
+
+```python
+records = ["Kupferstich, Ansicht von Rom, 17. Jh.", "Photographie, Bauhaus, 1927"]
+results = broker.batch(records, questions=questions)
+```
+
+## CLI
+
+```bash
+# Single decision (local Nimble call)
+jev-broker decide \
+  --state "Kupferstich, Ansicht von Rom, 17. Jh." \
+  --choice period=Historical period of the object|early_modern:1400-1800|modern:1800-1945|contemporary:1945-present \
+  --noul open_access=The record contains no personal data and no rights issues
+
+# Questions from JSON instead of flags
+jev-broker decide --state "..." --questions-file examples/questions.example.json
+
+# Offline demo (no API key needed) — shows decided / review / escalated paths
+jev-broker demo
+
+# Batch enrich records from JSON, write results to JSONL
+jev-broker batch --input examples/records.example.json \
+                 --questions-file examples/questions.example.json --out audit/batch.jsonl
+
+# Introspection
+jev-broker metrics
+jev-broker audit --limit 10
+```
+
+## REST server
+
+```bash
+jev-broker serve --host 127.0.0.1 --port 8787
+```
+
+| Endpoint | Description |
+|---|---|
+| `POST /v1/broker/decide` | Single decision (body: `state`, `questions`, optional `policy`) |
+| `POST /v1/broker/batch` | Batch decisions (body: `records`, `questions`) |
+| `GET  /v1/broker/health` | Liveness |
+| `GET  /v1/broker/metrics` | Calls, errors, cache stats, policy |
+| `GET  /v1/broker/audit?limit=20` | Recent audit entries |
+
+## Differences vs. hosted Jev
+
+- **No `box` questions** (rejected with a clear error); only `choice`, `score`, `noul`.
+- **`confidence` is entropy-based** (`1 - H(p)/ln N`) and measures how concentrated the
+  distribution is, **not calibrated correctness**. Re-tune `auto_threshold` /
+  `review_threshold` on labeled NFDI4Culture records before trusting the defaults.
+- Local inference: no per-token cost (`cost_estimate_usd` is 0 unless you set `cost_usd_per_btok`).
+
+## Decision policy
+
+`QuestionPolicy` (defaults are conservative and configurable per request):
+
+- **Choice / Score**: `confidence >= auto_threshold` (0.85) → `decided`;
+  `>= review_threshold` (0.5) → `review`; below → `escalated`.
+- **Noul**: `p >= noul_yes` (0.7) → `yes`; `p <= noul_no` (0.3) → `no`;
+  in between → `review` (or `escalated` if closer to 0.5).
+
+`escalated` questions go to the configured `EscalationBackend`:
+
+- `HoldBackend` (default): no automated action — answer is `None`, status `escalated`,
+  your app routes it to a human.
+- `LLMFallbackBackend`: asks an OpenAI-compatible chat endpoint for a second opinion;
+  the result is marked `calibrated: false` and `source: "fallback_llm"`, and the
+  original original answer is preserved under `primary`.
+
+## Tests
+
+```bash
+.venv/bin/pytest -q
+```
+
+Tests run fully offline (`FakeJev` deterministic stand-in + `httpx.MockTransport`).
