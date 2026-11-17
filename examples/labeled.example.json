@@ -1,0 +1,306 @@
+[
+ {
+  "state": "Kupferstich, 'Ansicht von Rom mit dem Petersdom', 17. Jahrhundert, Sammlung DFKI",
+  "labels": {
+   "period": "early_modern",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Photographie, 'Bauhaus Dessau, Nordflügel', 1927, Nachlass Gropius",
+  "labels": {
+   "period": "modern",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Briefwechsel, lateinisch, 'epistulae ad Ciceronem', Abschrift, 13. Jahrhundert",
+  "labels": {
+   "period": "medieval",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Musikstück, 'Sonate für Klavier No. 8 in Es-Dur', komponiert 1952",
+  "labels": {
+   "period": "contemporary",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Bronzestatue eines Athleten, römische Kopie nach griechischem Original, 1. Jh. n. Chr.",
+  "labels": {
+   "period": "antique",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Oil on canvas, 'Portrait of a Lady', Thomas Gainsborough, c. 1770",
+  "labels": {
+   "period": "early_modern",
+   "language": "en",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Photograph, 'Berlin Wall, Checkpoint Charlie', 1963, private collection of the photographer, all rights reserved",
+  "labels": {
+   "period": "contemporary",
+   "language": "en",
+   "open_access": false
+  }
+ },
+ {
+  "state": "Illuminated manuscript, Book of Hours, Paris, c. 1450, 120 folios",
+  "labels": {
+   "period": "early_modern",
+   "language": "en",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Tonscherbe mit Linear-B-Inschrift, Knossos, 14. Jh. v. Chr.",
+  "labels": {
+   "period": "antique",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Huile sur toile, 'Les Nymphéas', Claude Monet, 1919",
+  "labels": {
+   "period": "modern",
+   "language": "fr",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Lettre autographe de Voltaire à Frédéric II, 1752",
+  "labels": {
+   "period": "early_modern",
+   "language": "fr",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Fotografie, 'Familie Müller vor dem Haus', 1934, mit Namen und Adressen der abgebildeten lebenden Personen",
+  "labels": {
+   "period": "modern",
+   "language": "de",
+   "open_access": false
+  }
+ },
+ {
+  "state": "Mosaic floor panel from a Roman villa, Trier, 3rd century CE",
+  "labels": {
+   "period": "antique",
+   "language": "en",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Tagebuch einer Dresdner Bürgerin, 1944–1945, Transkription, Nutzung nur mit Genehmigung der Erben",
+  "labels": {
+   "period": "modern",
+   "language": "de",
+   "open_access": false
+  }
+ },
+ {
+  "state": "Codex Manesse, Liederhandschrift, Zürich, um 1300",
+  "labels": {
+   "period": "medieval",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Plakat, 'Documenta 14', Kassel, 2017",
+  "labels": {
+   "period": "contemporary",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Gotische Kathedrale Notre-Dame de Reims, Westfassade, 13. Jahrhundert, Fotografie von 2019 (CC BY 4.0)",
+  "labels": {
+   "period": "medieval",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Sculpture en marbre, 'Le Penseur', Auguste Rodin, 1904",
+  "labels": {
+   "period": "modern",
+   "language": "fr",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Lute tablature manuscript, Elizabethan England, c. 1590",
+  "labels": {
+   "period": "early_modern",
+   "language": "en",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Videoinstallation, 'Pipilotti Rist – Ever Is Over All', 1997",
+  "labels": {
+   "period": "contemporary",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Papyrus mit Rechnung über Getreidelieferung, Oxyrhynchos, 2. Jahrhundert n. Chr., griechisch",
+  "labels": {
+   "period": "antique",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Sermones de tempore, Handschrift auf Pergament, lateinisch, 14. Jahrhundert, Kloster Melk",
+  "labels": {
+   "period": "medieval",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Gemälde, 'Der Wanderer über dem Nebelmeer', Caspar David Friedrich, um 1818",
+  "labels": {
+   "period": "modern",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Interview recording with a living artist, 2021, contains contact details and health information of the interviewee",
+  "labels": {
+   "period": "contemporary",
+   "language": "en",
+   "open_access": false
+  }
+ },
+ {
+  "state": "Radierung, Rembrandt van Rijn, 'Die drei Kreuze', 1653",
+  "labels": {
+   "period": "early_modern",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Poster, 'Woodstock Music & Art Fair', 1969",
+  "labels": {
+   "period": "contemporary",
+   "language": "en",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Vase, attisch-rotfigurig, um 450 v. Chr., Staatliche Antikensammlungen München",
+  "labels": {
+   "period": "antique",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Partitur, Johann Sebastian Bach, 'Brandenburgische Konzerte', Autograph, 1721",
+  "labels": {
+   "period": "early_modern",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Architekturzeichnung, Mies van der Rohe, Barcelona-Pavillon, 1928/29",
+  "labels": {
+   "period": "modern",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Liber chronicarum, Hartmann Schedel, Nürnberg 1493, Inkunabel, lateinische Ausgabe",
+  "labels": {
+   "period": "early_modern",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Fotografie eines Unfallopfers mit erkennbarem Gesicht, 1998, Polizeiarchiv, gesperrt",
+  "labels": {
+   "period": "contemporary",
+   "language": "de",
+   "open_access": false
+  }
+ },
+ {
+  "state": "Skizzenbuch, 'Sketchbook of Egon Schiele', 1912",
+  "labels": {
+   "period": "modern",
+   "language": "en",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Fragment einer Wachstafel mit Schülerübung, Vindolanda, um 100 n. Chr.",
+  "labels": {
+   "period": "antique",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Chanson de Roland, manuscrit d'Oxford, XIIe siècle",
+  "labels": {
+   "period": "medieval",
+   "language": "fr",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Street photograph, Tokyo Shibuya crossing, 2023, photographer unknown, rights unclear",
+  "labels": {
+   "period": "contemporary",
+   "language": "en",
+   "open_access": false
+  }
+ },
+ {
+  "state": "Altarretabel, Isenheimer Altar, Matthias Grünewald, 1512–1516",
+  "labels": {
+   "period": "early_modern",
+   "language": "de",
+   "open_access": true
+  }
+ },
+ {
+  "state": "Gedicht-Typoskript, Paul Celan, 'Todesfuge', 1948, Rechte beim Suhrkamp Verlag",
+  "labels": {
+   "period": "contemporary",
+   "language": "de",
+   "open_access": false
+  }
+ },
+ {
+  "state": "Stuhl, 'Wassily Chair', Marcel Breuer, 1925",
+  "labels": {
+   "period": "modern",
+   "language": "en",
+   "open_access": true
+  }
+ }
+]

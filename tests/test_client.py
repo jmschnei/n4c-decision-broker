@@ -140,3 +140,66 @@ def test_state_object_serialized_and_no_auth_locally():
 def test_box_rejected():
     with pytest.raises(ValueError, match="box"):
         JevClient.question_payload({"id": "b", "type": "box", "instructions": "where"})
+
+
+# -- retries -------------------------------------------------------------------
+def _retry_client(handler, **kw):
+    sleeps = []
+    c = JevClient(transport=httpx.MockTransport(handler), sleep=sleeps.append, **kw)
+    return c, sleeps
+
+
+Q = {"open": {"type": "noul", "instructions": "o"}}
+
+
+def test_retries_on_503_then_succeeds():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        if len(calls) < 3:
+            return httpx.Response(503, json={"error": "loading"})
+        return httpx.Response(200, json=OLLAMA_RESPONSE)
+
+    c, sleeps = _retry_client(handler)
+    assert c.system_one("s", Q)["model"] == "nimble"
+    assert len(calls) == 3 and len(sleeps) == 2
+    assert sleeps[1] >= sleeps[0] * 0 and all(s <= c.backoff_max for s in sleeps)
+
+
+def test_retries_on_connection_error_then_gives_up():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        raise httpx.ConnectError("refused")
+
+    c, sleeps = _retry_client(handler, max_retries=2)
+    with pytest.raises(httpx.ConnectError):
+        c.system_one("s", Q)
+    assert len(calls) == 3 and len(sleeps) == 2
+
+
+def test_no_retry_on_4xx_and_retry_after_honoured():
+    calls = []
+
+    def bad(request):
+        calls.append(1)
+        return httpx.Response(400, json={"error": "bad"})
+
+    c, sleeps = _retry_client(bad)
+    with pytest.raises(JevAPIError):
+        c.system_one("s", Q)
+    assert len(calls) == 1 and sleeps == []
+
+    n = []
+
+    def throttled(request):
+        n.append(1)
+        if len(n) == 1:
+            return httpx.Response(429, headers={"retry-after": "3"}, json={})
+        return httpx.Response(200, json=OLLAMA_RESPONSE)
+
+    c, sleeps = _retry_client(throttled)
+    c.system_one("s", Q)
+    assert sleeps and sleeps[0] >= 3

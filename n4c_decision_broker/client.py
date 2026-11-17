@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import json
 import os
+import random
+import time
 from typing import Any, Mapping, Optional, Union
 
 from n4c_decision_broker.models import QuestionSpec
@@ -25,6 +27,7 @@ __all__ = ["JevAPIError", "OllamaAPIError", "JevClient", "OllamaClient"]
 
 DEFAULT_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "nimble"
+RETRY_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
 
 
 def default_base_url() -> str:
@@ -58,7 +61,11 @@ class OllamaClient:
         model: Optional[str] = None,
         timeout: float = 120.0,
         keep_alive: Optional[Union[str, int]] = "5m",
+        max_retries: int = 3,
+        backoff_base: float = 0.5,
+        backoff_max: float = 8.0,
         transport: Optional[Any] = None,
+        sleep: Any = time.sleep,
     ):
         import httpx  # local import so the package loads even without httpx
 
@@ -66,6 +73,11 @@ class OllamaClient:
         self.api_key = api_key or os.environ.get("OLLAMA_API_KEY")  # only for cloud models
         self.model = model or os.environ.get("N4C_BROKER_MODEL") or DEFAULT_MODEL
         self.keep_alive = keep_alive
+        self.max_retries = max(0, max_retries)
+        self.backoff_base = backoff_base
+        self.backoff_max = backoff_max
+        self._sleep = sleep
+        self._httpx = httpx
         self.timeout = timeout
         headers = {"Content-Type": "application/json"}
         if self.api_key:
@@ -147,14 +159,38 @@ class OllamaClient:
     ) -> dict:
         """Evaluate all questions against the state in one call (parallel on the server)."""
         payload = self.build_request(state, questions, model=self.model, keep_alive=self.keep_alive)
-        resp = self._http.post("/v1/systemone", json=payload)
-        if resp.status_code >= 400:
+        transient = (self._httpx.TransportError,)  # connect/read/timeout errors
+        for attempt in range(self.max_retries + 1):
+            last = attempt == self.max_retries
             try:
-                body = resp.json()
-            except Exception:
-                body = resp.text
-            raise OllamaAPIError(resp.status_code, str(body), body=body)
-        return resp.json()
+                resp = self._http.post("/v1/systemone", json=payload)
+            except transient:
+                if last:
+                    raise
+                self._backoff(attempt, None)
+                continue
+            if resp.status_code in RETRY_STATUS and not last:
+                self._backoff(attempt, resp.headers.get("retry-after"))
+                continue
+            if resp.status_code >= 400:
+                try:
+                    body = resp.json()
+                except Exception:
+                    body = resp.text
+                raise OllamaAPIError(resp.status_code, str(body), body=body)
+            return resp.json()
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    def _backoff(self, attempt: int, retry_after: Optional[str]) -> None:
+        """Exponential backoff with jitter; honours a numeric Retry-After header."""
+        delay = min(self.backoff_max, self.backoff_base * (2 ** attempt))
+        delay *= random.uniform(0.5, 1.0)
+        if retry_after:
+            try:
+                delay = max(delay, min(float(retry_after), self.backoff_max))
+            except ValueError:
+                pass
+        self._sleep(delay)
 
     def close(self) -> None:
         self._http.close()

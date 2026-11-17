@@ -118,6 +118,31 @@ n4c-decision-broker serve --host 127.0.0.1 --port 8787
 | `GET  /v1/broker/metrics` | Calls, errors, cache stats, policy |
 | `GET  /v1/broker/audit?limit=20` | Recent audit entries |
 
+## Robustness
+
+- **Retries:** the client retries connection errors and HTTP 408/425/429/5xx with exponential
+  backoff + jitter (`max_retries=3`, honours `Retry-After`); 4xx errors are not retried.
+- **Parallel batch:** `broker.batch(records, questions, max_workers=4)` /
+  `batch --workers N`; order is preserved and one failing record becomes an `error`
+  response instead of aborting the batch.
+- **Fallback:** errors inside an escalation backend never break the flow
+  (counted in `metrics()["fallback_errors"]`).
+
+## Threshold calibration
+
+```bash
+n4c-decision-broker calibrate --labeled examples/labeled.example.json \
+    --questions-file examples/questions.example.json     # live Nimble; saves raw observations
+n4c-decision-broker calibrate --from-observations audit/calibration_observations.json \
+    --target-auto 0.9 --target-review 0.75               # recompute offline, no model calls
+```
+
+Reports per-tier accuracy, ECE and a recommended `QuestionPolicy`. Thresholds are the
+lowest confidence whose answers meet the target accuracy (`--target-auto`,
+`--target-review`, backed by `--min-support` answers). `examples/labeled.example.json`
+is a small illustrative set (38 records) — **use your own labeled NFDI4Culture records**
+before adopting the thresholds.
+
 ## Differences vs. hosted Jev
 
 - **No `box` questions** (rejected with a clear error); only `choice`, `score`, `noul`.

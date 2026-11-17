@@ -1,8 +1,10 @@
 """ModelBroker: orchestrates Jev calls, confidence routing, fallback, cache, audit."""
 from __future__ import annotations
 
+import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional, Sequence, Union
 
 from n4c_decision_broker.audit import AuditLog
@@ -56,6 +58,8 @@ class ModelBroker:
         self.cost_usd_per_btok = cost_usd_per_btok
         self.provider_calls = 0
         self.provider_errors = 0
+        self.fallback_errors = 0
+        self._lock = threading.Lock()  # guards the counters (batch runs decide() in threads)
 
     # -- helpers -----------------------------------------------------------
     @staticmethod
@@ -120,14 +124,16 @@ class ModelBroker:
         raw: Optional[dict] = None
         answers_raw: dict[str, dict] = {}
         if pending:
-            self.provider_calls += 1
+            with self._lock:
+                self.provider_calls += 1
             try:
                 raw = self.client.system_one(
                     state, {q.id: JevClient.question_payload(q) for q in pending}
                 )
                 answers_raw = JevClient.extract_answers(raw or {}, pending)
             except Exception as exc:  # noqa: BLE001 - surfaced per-question below
-                self.provider_errors += 1
+                with self._lock:
+                    self.provider_errors += 1
                 for q in pending:
                     results[q.id] = AnswerResult(
                         question_id=q.id,
@@ -169,10 +175,12 @@ class ModelBroker:
                     if routing.status == "escalated" and self.fallback.name != "hold":
                         try:
                             fb = self.fallback.escalate(question=q, state=state, original=a)
+                            if fb and fb.get("answer") is not None:
+                                # Coercion errors (e.g. int("high")) must not break the flow either.
+                                ar = self._apply_fallback(ar.model_copy(deep=True), q, fb)
                         except Exception:  # noqa: BLE001 - fallback must never break the flow
-                            fb = None
-                        if fb and fb.get("answer") is not None:
-                            ar = self._apply_fallback(ar, q, fb)
+                            with self._lock:
+                                self.fallback_errors += 1
                     results[q.id] = ar
 
         # 4) Restore input order, cache governed (non-error) decisions, audit.
@@ -247,18 +255,41 @@ class ModelBroker:
         questions: Union[Sequence[QuestionSpec], dict, list],
         policy: Optional[QuestionPolicy] = None,
         use_cache: bool = True,
+        max_workers: int = 4,
     ) -> list[BrokerResponse]:
-        """Evaluate a collection of records (e.g. a museum catalog export)."""
+        """Evaluate a collection of records (e.g. a museum catalog export).
+
+        Records run in ``max_workers`` threads; the result order matches the input.
+        An unexpected failure on one record becomes an ``error`` response for that
+        record instead of aborting the whole batch.
+        """
         question_list = self._as_question_list(questions)
-        return [
-            self.decide(record, question_list, policy=policy, use_cache=use_cache)
-            for record in records
-        ]
+
+        def one(record: Union[str, dict, list]) -> BrokerResponse:
+            try:
+                return self.decide(record, question_list, policy=policy, use_cache=use_cache)
+            except Exception as exc:  # noqa: BLE001 - isolate per-record failures
+                return BrokerResponse(
+                    request_id=uuid.uuid4().hex,
+                    state_sha256=state_sha256(record),
+                    answers=[
+                        AnswerResult(question_id=q.id, status="error", source="none",
+                                     calibrated=False, question=q, error=str(exc))
+                        for q in question_list
+                    ],
+                    latency_ms=0.0,
+                )
+
+        if max_workers <= 1 or len(records) <= 1:
+            return [one(r) for r in records]
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            return list(pool.map(one, records))
 
     def metrics(self) -> dict:
         return {
             "provider_calls": self.provider_calls,
             "provider_errors": self.provider_errors,
+            "fallback_errors": self.fallback_errors,
             "fallback": self.fallback.name,
             "policy": self.policy.model_dump(mode="json"),
             "cache": self.cache.stats() if self.cache is not None else None,

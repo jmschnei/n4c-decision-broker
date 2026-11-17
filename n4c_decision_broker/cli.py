@@ -149,7 +149,7 @@ def cmd_batch(args: argparse.Namespace) -> int:
         records = records.get("records", [records])
     broker = _build_broker(args)
     try:
-        results = broker.batch(records, _load_questions(args))
+        results = broker.batch(records, _load_questions(args), max_workers=args.workers)
     finally:
         broker.close()
     out = Path(args.out)
@@ -158,6 +158,35 @@ def cmd_batch(args: argparse.Namespace) -> int:
         for r in results:
             fh.write(json.dumps(r.model_dump(mode="json"), ensure_ascii=False) + "\n")
     print(f"wrote {len(results)} decisions to {out}")
+    return 0
+
+
+def cmd_calibrate(args: argparse.Namespace) -> int:
+    from n4c_decision_broker.calibration import (
+        calibrate, collect, load_labeled, load_observations, save_observations,
+    )
+
+    if args.from_observations:  # recompute offline from a previous run, no model calls
+        obs = load_observations(args.from_observations)
+    else:
+        if not args.labeled:
+            raise SystemExit("--labeled is required (or pass --from-observations)")
+        records = load_labeled(args.labeled)
+        questions = _load_questions(args)
+        client = JevClient(model=args.model)
+        try:
+            obs = collect(client, records, questions,
+                          progress=lambda i, n: print(f"\r{i}/{n} records", end="", file=sys.stderr))
+        finally:
+            client.close()
+        print(file=sys.stderr)
+        save_observations(obs, args.obs_out)
+    report = calibrate(obs, target_auto=args.target_auto, target_review=args.target_review,
+                       min_support=args.min_support)
+    if args.out:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -220,8 +249,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_batch = sub.add_parser("batch", help="enrich a JSON list of records")
     add_common(p_batch)
     p_batch.add_argument("--input", required=True, type=Path)
+    p_batch.add_argument("--workers", type=int, default=4, help="parallel records (default 4)")
     p_batch.add_argument("--out", default="audit/batch.jsonl", type=Path)
     p_batch.set_defaults(func=cmd_batch)
+
+    p_cal = sub.add_parser("calibrate", help="calibrate routing thresholds on labeled records")
+    add_common(p_cal)
+    p_cal.add_argument("--from-observations", type=Path, help="reuse saved observations (no model calls)")
+    p_cal.add_argument("--obs-out", type=Path, default=Path("audit/calibration_observations.json"))
+    p_cal.add_argument("--labeled", type=Path,
+                       help='JSON list of {"state": ..., "labels": {question_id: value}}')
+    p_cal.add_argument("--target-auto", type=float, default=0.95, help="min accuracy of auto-decided answers")
+    p_cal.add_argument("--target-review", type=float, default=0.80, help="min accuracy above the review threshold")
+    p_cal.add_argument("--min-support", type=int, default=5, help="min answers backing a threshold")
+    p_cal.add_argument("--out", type=Path, default=Path("audit/calibration.json"))
+    p_cal.set_defaults(func=cmd_calibrate)
 
     p_serve = sub.add_parser("serve", help="run the REST server")
     add_common(p_serve)

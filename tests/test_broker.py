@@ -184,3 +184,52 @@ def test_metrics_shape(tmp_path):
     assert m["provider_calls"] == 1
     assert m["fallback"] == "hold"
     assert m["cache"]["size"] >= 1
+
+
+# -- hardening ---------------------------------------------------------------
+class _UnconfidentJev(FakeJev):
+    def _distribution(self, rng, n):
+        return [round(1.0 / n, 4)] * n
+
+
+class _BadFallback(HoldBackend):
+    name = "bad"
+
+    def escalate(self, *, question, state, original):
+        return {"answer": "not-a-number", "detail": "x"}  # int() would raise for score
+
+
+def test_fallback_exception_does_not_break_flow_or_mutate_answer():
+    score_q = QuestionSpec(id="s", type="score", instructions="how good",
+                           criteria=["bad", "ok", "good"])
+    broker = ModelBroker(client=_UnconfidentJev(seed="t"), fallback=_BadFallback(), policy=POLICY)
+    r = broker.decide("state", [score_q])
+    a = r.answers[0]
+    assert a.status == "escalated" and a.source == "jev" and a.calibrated is True
+    assert a.primary is None
+    assert broker.metrics()["fallback_errors"] == 1
+
+
+def test_batch_parallel_preserves_order_and_counts():
+    records = [f"record {i}" for i in range(20)]
+    seq = ModelBroker(client=FakeJev(seed="p"), policy=POLICY).batch(records, QUESTIONS, max_workers=1)
+    par_broker = ModelBroker(client=FakeJev(seed="p"), policy=POLICY)
+    par = par_broker.batch(records, QUESTIONS, max_workers=8)
+    assert [r.state_sha256 for r in par] == [r.state_sha256 for r in seq]
+    assert [[a.choice for a in r.answers] for r in par] == [[a.choice for a in r.answers] for r in seq]
+    assert par_broker.provider_calls == 20
+
+
+def test_batch_isolates_per_record_failures():
+    broker = ModelBroker(client=FakeJev(seed="p"), policy=POLICY)
+    orig = broker.decide
+
+    def flaky(record, *a, **kw):
+        if record == "bad":
+            raise RuntimeError("boom")
+        return orig(record, *a, **kw)
+
+    broker.decide = flaky
+    out = broker.batch(["ok1", "bad", "ok2"], QUESTIONS, max_workers=3)
+    assert [r.answers[0].status == "error" for r in out] == [False, True, False]
+    assert out[1].answers[0].error == "boom"
