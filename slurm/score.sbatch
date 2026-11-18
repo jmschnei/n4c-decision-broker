@@ -9,6 +9,13 @@
 # queries on the public endpoints (needs internet on this node; see tools/eval/score.py).
 set -euo pipefail
 export N4C_ROOT="${N4C_ROOT:-$SLURM_SUBMIT_DIR}"
+# Container mode: re-run this very script inside the Pyxis/Enroot image (see config.sh).
+if [ -n "${N4C_CONTAINER_IMAGE:-}" ] && [ -z "${N4C_IN_CONTAINER:-}" ]; then
+  # shellcheck source=slurm/config.sh
+  source "$N4C_ROOT/slurm/config.sh"
+  exec srun "${CONTAINER_ARGS[@]}" ${N4C_GRES:+--gres="$N4C_GRES"} --cpus-per-task="${SLURM_CPUS_PER_TASK:-1}" \
+    --export=ALL,N4C_IN_CONTAINER=1 bash "$N4C_ROOT/slurm/score.sbatch"
+fi
 # shellcheck source=slurm/config.sh
 source "$N4C_ROOT/slurm/config.sh"
 EXTRA=()

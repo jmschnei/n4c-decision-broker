@@ -13,6 +13,9 @@ OLLAMA_FLAVOR="${OLLAMA_FLAVOR:-}"             # "" = NVIDIA/CPU build; "rocm" f
 OLLAMA_DIR="$WORK/ollama"
 export OLLAMA_MODELS="${OLLAMA_MODELS:-$WORK/ollama_models}"
 
+# Ollama keeps its identity key in $HOME/.ollama: make sure HOME is writable (containers often aren't).
+if [ ! -w "${HOME:-/nonexistent}" ]; then export HOME="$WORK/home"; mkdir -p "$HOME"; fi
+
 VENV="$WORK/venv"
 DATA_RAW="$WORK/datasets/raw"
 DATA_NORM="$WORK/datasets/normalized"
@@ -36,3 +39,15 @@ fi
 NUM_SHARDS="${N4C_SHARDS:-2}"     # every model is split over this many parallel GPU jobs
 WORKERS="${N4C_WORKERS:-4}"       # concurrent requests per Ollama server (OLLAMA_NUM_PARALLEL)
 SHOTS="${N4C_SHOTS:-3}"
+
+# Optional Pyxis/Enroot container (e.g. N4C_CONTAINER_IMAGE=/enroot/nvcr.io_nvidia_pytorch_23.12-py3.sqsh).
+# When set, the sbatch scripts re-run themselves inside it with `srun --container-image ...`.
+# Extra mounts (comma separated, e.g. "/ds:/ds:ro") go in N4C_CONTAINER_MOUNTS.
+CONTAINER_ARGS=()
+if [ -n "${N4C_CONTAINER_IMAGE:-}" ]; then
+  CONTAINER_ARGS=(
+    "--container-image=$N4C_CONTAINER_IMAGE"
+    "--container-workdir=$ROOT"
+    "--container-mounts=$WORK:$WORK,$ROOT:$ROOT${N4C_CONTAINER_MOUNTS:+,$N4C_CONTAINER_MOUNTS}"
+  )
+fi

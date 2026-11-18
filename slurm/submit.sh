@@ -4,6 +4,7 @@
 #   bash slurm/submit.sh [--partition P] [--gres gpu:1] [--time HH:MM:SS] [--shards N]
 #                        [--max-parallel K] [--run-name NAME] [--models "m1 m2"] [--limit N]
 #                        [--execute] [--account A] [--dry-run]
+#                        [--container-image IMG.sqsh] [--container-mounts "/ds:/ds:ro,..."]
 set -euo pipefail
 export N4C_ROOT="${N4C_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
@@ -15,11 +16,14 @@ while [ $# -gt 0 ]; do
     --shards) export N4C_SHARDS=$2; shift 2 ;;  --max-parallel) THROTTLE=$2; shift 2 ;;
     --run-name) export N4C_RUN_NAME=$2; shift 2 ;;  --models) export N4C_MODELS=$2; shift 2 ;;
     --limit) export N4C_LIMIT=$2; shift 2 ;;  --execute) export N4C_EXECUTE=1; shift ;;
+    --container-image) export N4C_CONTAINER_IMAGE=$2; shift 2 ;;
+    --container-mounts) export N4C_CONTAINER_MOUNTS=$2; shift 2 ;;
     --dry-run) DRY=1; shift ;;
-    -h|--help) sed -n '2,7p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,8p' "$0"; exit 0 ;;
     *) echo "unknown option $1"; exit 2 ;;
   esac
 done
+export N4C_GRES="$GRES"
 # shellcheck source=slurm/config.sh
 source "$N4C_ROOT/slurm/config.sh"
 

@@ -166,6 +166,15 @@ starts when the array ends. Useful options: `--shards N`, `--models "m1 m2"`, `-
 Re-running the same command resumes unfinished work. Results: `$N4C_WORK/results/<run>/scores/`
 (`summary.md`, `summary.json`, `item_scores.jsonl`).
 
+Pyxis/Enroot clusters: add `--container-image /enroot/<image>.sqsh [--container-mounts "/ds:/ds:ro"]`
+to `submit.sh` (the scripts re-run themselves inside the container with `srun --container-image ...`),
+or run any step by hand, e.g.
+
+```bash
+srun --container-image=/enroot/nvcr.io_nvidia_pytorch_23.12-py3.sqsh --container-workdir="`pwd`" \
+  --container-mounts=/netscratch/$USER:/netscratch/$USER,"`pwd`":"`pwd`" --export=ALL bash slurm/setup.sh
+```
+
 If the login node forbids heavy work: `sbatch --partition=<internet-partition> slurm/setup.sbatch`.
 Needs NVIDIA GPUs with >= 24 GB for the 30B models (`OLLAMA_FLAVOR=rocm` for AMD).
 

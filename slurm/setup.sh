@@ -18,7 +18,13 @@ echo "free space in WORK: $(free_gb "$WORK") GB (need ~100 GB for the 7 models +
 
 # ---------------------------------------------------------------- 1. Python venv
 if [ -z "${SKIP_VENV:-}" ]; then
-  if [ ! -x "$VENV/bin/python" ]; then "$PYTHON" -m venv "$VENV"; fi
+  if [ ! -x "$VENV/bin/python" ]; then
+    "$PYTHON" -m venv "$VENV" 2>/dev/null || {  # some container images lack python3-venv
+      echo "   python -m venv failed, falling back to virtualenv"
+      rm -rf "${VENV:?}"
+      "$PYTHON" -m pip install -q --user virtualenv && "$PYTHON" -m virtualenv -q "$VENV"
+    }
+  fi
   "$VENV/bin/pip" install -q --upgrade pip
   "$VENV/bin/pip" install -q -e "$N4C_ROOT[eval]" zstandard
   echo "== venv ready: $("$VENV/bin/python" --version)"
