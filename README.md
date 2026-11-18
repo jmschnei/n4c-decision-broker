@@ -144,6 +144,31 @@ Plain Docker: `docker run -p 8787:8787 -e N4C_BROKER_API_KEYS=... n4c-decision-b
 
 MIT — see [LICENSE](LICENSE).
 
+## Model evaluation on a Slurm cluster
+
+Compares candidate Ollama models on text-to-SPARQL (Spider4SPARQL dev, GOLEM, QALD-10/9-plus;
+700 sampled questions) to build the per-query model-quality table the broker's recommendations
+are evaluated against. Everything runs in user space; no root needed.
+
+```bash
+git clone https://github.com/jmschnei/n4c-decision-broker && cd n4c-decision-broker
+export N4C_WORK=/path/to/shared/scratch/n4c      # ~100 GB free, visible from all nodes
+
+bash slurm/setup.sh                              # once, WITH internet (login node):
+                                                 # venv, Ollama, 7 models (~80 GB), datasets
+bash slurm/submit.sh --partition gpu --time 03:00:00 --max-parallel 8
+```
+
+`submit.sh` launches an array job (models x shards, one GPU each) and a scoring job that
+starts when the array ends. Useful options: `--shards N`, `--models "m1 m2"`, `--run-name`,
+`--account`, `--gres gpu:a100:1`, `--limit 20` (smoke test), `--dry-run`, `--execute`
+(also run queries on public endpoints; needs internet, see `tools/eval/score.py`).
+Re-running the same command resumes unfinished work. Results: `$N4C_WORK/results/<run>/scores/`
+(`summary.md`, `summary.json`, `item_scores.jsonl`).
+
+If the login node forbids heavy work: `sbatch --partition=<internet-partition> slurm/setup.sbatch`.
+Needs NVIDIA GPUs with >= 24 GB for the 30B models (`OLLAMA_FLAVOR=rocm` for AMD).
+
 ## Robustness
 
 - **Retries:** the client retries connection errors and HTTP 408/425/429/5xx with exponential

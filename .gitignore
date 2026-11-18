@@ -15,3 +15,5 @@ audit/*.log
 
 # third-party evaluation datasets (licenses vary, GOLEM unverified): never commit
 datasets/
+cluster_work/
+results/
