@@ -11,7 +11,7 @@
 # Compute nodes do NOT need internet: Ollama, models and data come from the shared WORK dir.
 set -euo pipefail
 
-export N4C_ROOT="${N4C_ROOT:-$SLURM_SUBMIT_DIR}"
+export N4C_ROOT="${N4C_ROOT:-${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}}"
 # Container mode: re-run this very script inside the Pyxis/Enroot image (see config.sh).
 if [ -n "${N4C_CONTAINER_IMAGE:-}" ] && [ -z "${N4C_IN_CONTAINER:-}" ]; then
   # shellcheck source=slurm/config.sh
@@ -29,7 +29,7 @@ SHARD=$((IDX / NM))
 echo "== host=$(hostname) job=${SLURM_JOB_ID:-local} task=$IDX model=$MODEL shard=$SHARD/$NUM_SHARDS"
 command -v nvidia-smi >/dev/null && nvidia-smi -L || echo "WARNING: no NVIDIA GPU visible (CPU inference will be very slow)"
 
-[ -x "$OLLAMA_DIR/bin/ollama" ] || { echo "Ollama not installed: run slurm/setup.sh first"; exit 1; }
+[ -x "$OLLAMA_BIN" ] || { echo "Ollama not found: build the image (slurm/build_image.sh) or run slurm/setup.sh"; exit 1; }
 [ -f "$DATA_NORM/eval_sample.jsonl" ] || { echo "datasets missing: run slurm/setup.sh first"; exit 1; }
 
 # One private Ollama server per task, on a port derived from the job id.
@@ -38,7 +38,7 @@ export OLLAMA_HOST="127.0.0.1:$PORT"
 export OLLAMA_NUM_PARALLEL="$WORKERS" OLLAMA_MAX_LOADED_MODELS=1 OLLAMA_KEEP_ALIVE=-1
 export OLLAMA_CONTEXT_LENGTH=8192
 mkdir -p "$RESULTS/logs" "$RESULTS/generation"
-"$OLLAMA_DIR/bin/ollama" serve > "$RESULTS/logs/ollama_${SLURM_JOB_ID:-local}.log" 2>&1 &
+"$OLLAMA_BIN" serve > "$RESULTS/logs/ollama_${SLURM_JOB_ID:-local}.log" 2>&1 &
 SERVER=$!
 trap 'kill $SERVER 2>/dev/null || true; wait $SERVER 2>/dev/null || true' EXIT
 
@@ -53,7 +53,7 @@ curl -fs -m 900 "http://$OLLAMA_HOST/api/chat" -d "{\"model\":\"$MODEL\",\"strea
 
 EXTRA=()
 [ -n "${N4C_LIMIT:-}" ] && EXTRA+=(--limit "$N4C_LIMIT")
-"$VENV/bin/python" -I "$N4C_ROOT/tools/eval/generate.py" \
+"$PY" -I "$N4C_ROOT/tools/eval/generate.py" \
   --model "$MODEL" --data "$DATA_NORM" --out "$RESULTS/generation" \
   --base-url "http://$OLLAMA_HOST" --shots "$SHOTS" --workers "$WORKERS" \
   --shard "$SHARD" --num-shards "$NUM_SHARDS" ${EXTRA[@]+"${EXTRA[@]}"}

@@ -17,6 +17,11 @@ export OLLAMA_MODELS="${OLLAMA_MODELS:-$WORK/ollama_models}"
 if [ ! -w "${HOME:-/nonexistent}" ]; then export HOME="$WORK/home"; mkdir -p "$HOME"; fi
 
 VENV="$WORK/venv"
+# Binaries: prefer what setup.sh installed under WORK; otherwise use the ones in the container
+# image (docker/install_in_image.sh puts ollama on PATH and httpx/rdflib in the system python).
+if [ -x "$OLLAMA_DIR/bin/ollama" ]; then OLLAMA_BIN="$OLLAMA_DIR/bin/ollama"
+else OLLAMA_BIN="$(command -v ollama || echo "$OLLAMA_DIR/bin/ollama")"; fi
+if [ -x "$VENV/bin/python" ]; then PY="$VENV/bin/python"; else PY="${PYTHON:-python3}"; fi
 DATA_RAW="$WORK/datasets/raw"
 DATA_NORM="$WORK/datasets/normalized"
 RESULTS="$WORK/results/$RUN_NAME"

@@ -9,7 +9,7 @@
 # Needs a partition WITH internet access. Submit from the repository root:
 #   sbatch [--partition=...] slurm/setup.sbatch
 set -euo pipefail
-export N4C_ROOT="${N4C_ROOT:-$SLURM_SUBMIT_DIR}"
+export N4C_ROOT="${N4C_ROOT:-${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}}"
 # Container mode: re-run this very script inside the Pyxis/Enroot image (see config.sh).
 if [ -n "${N4C_CONTAINER_IMAGE:-}" ] && [ -z "${N4C_IN_CONTAINER:-}" ]; then
   # shellcheck source=slurm/config.sh

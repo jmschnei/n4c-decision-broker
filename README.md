@@ -166,14 +166,29 @@ starts when the array ends. Useful options: `--shards N`, `--models "m1 m2"`, `-
 Re-running the same command resumes unfinished work. Results: `$N4C_WORK/results/<run>/scores/`
 (`summary.md`, `summary.json`, `item_scores.jsonl`).
 
-Pyxis/Enroot clusters: add `--container-image /enroot/<image>.sqsh [--container-mounts "/ds:/ds:ro"]`
-to `submit.sh` (the scripts re-run themselves inside the container with `srun --container-image ...`),
-or run any step by hand, e.g.
+### Pyxis/Enroot clusters: build the image once
+
+Ollama is installed **into a container image** instead of the setup step:
 
 ```bash
-srun --container-image=/enroot/nvcr.io_nvidia_pytorch_23.12-py3.sqsh --container-workdir="`pwd`" \
-  --container-mounts=/netscratch/$USER:/netscratch/$USER,"`pwd`":"`pwd`" --export=ALL bash slurm/setup.sh
+BASE=/enroot/nvcr.io_nvidia_pytorch_23.12-py3.sqsh
+bash slurm/build_image.sh --base $BASE --out /netscratch/$USER/n4c-eval.sqsh --partition <partition>
 ```
+
+This starts the base image with Pyxis (`--container-save`, `--container-remap-root`), runs
+`docker/install_in_image.sh` (Ollama into `/usr/local` with checksum check + `httpx`, `rdflib`)
+and saves the `.sqsh`. Without Pyxis' save option, build it with Docker elsewhere
+(`docker build -f docker/Dockerfile.eval -t n4c-eval .`, then `enroot import -o ... dockerd://n4c-eval`).
+Models (~80 GB) are not baked in; they go to `$N4C_WORK/ollama_models`:
+
+```bash
+IMG=/netscratch/$USER/n4c-eval.sqsh
+C="--container-image=$IMG --container-workdir=`pwd` --container-mounts=/netscratch/$USER:/netscratch/$USER,`pwd`:`pwd`"
+srun -p <partition> --cpus-per-task=4 --mem=16G --time=06:00:00 $C --export=ALL bash slurm/setup.sh  # models + data
+bash slurm/submit.sh --partition <partition> --container-image $IMG [--container-mounts "/ds:/ds:ro"]
+```
+
+`setup.sh` detects the Ollama and Python libraries of the image and skips installing them.
 
 If the login node forbids heavy work: `sbatch --partition=<internet-partition> slurm/setup.sbatch`.
 Needs NVIDIA GPUs with >= 24 GB for the 30B models (`OLLAMA_FLAVOR=rocm` for AMD).

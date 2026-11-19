@@ -28,8 +28,13 @@ export N4C_GRES="$GRES"
 source "$N4C_ROOT/slurm/config.sh"
 
 if [ "$DRY" = 0 ]; then
-  [ -x "$OLLAMA_DIR/bin/ollama" ] && [ -f "$DATA_NORM/eval_sample.jsonl" ] \
-    || { echo "Setup not done in $WORK. Run first:  bash slurm/setup.sh"; exit 1; }
+  if [ -n "${N4C_CONTAINER_IMAGE:-}" ]; then   # ollama lives in the image, which we cannot inspect from here
+    [ -f "$N4C_CONTAINER_IMAGE" ] || { echo "container image not found: $N4C_CONTAINER_IMAGE"; exit 1; }
+  else
+    [ -x "$OLLAMA_DIR/bin/ollama" ] || { echo "Ollama not installed in $WORK: run slurm/setup.sh (or use --container-image)"; exit 1; }
+  fi
+  [ -f "$DATA_NORM/eval_sample.jsonl" ] && [ -d "$OLLAMA_MODELS" ] \
+    || { echo "Data/models missing in $WORK. Run first the setup (see README)"; exit 1; }
 fi
 NM=${#MODELS[@]}
 LAST=$((NM * NUM_SHARDS - 1))

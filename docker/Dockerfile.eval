@@ -1,0 +1,10 @@
+# Evaluation image: a CUDA/PyTorch base + Ollama + the Python libraries used by tools/eval.
+#   docker build -f docker/Dockerfile.eval -t n4c-eval .
+#   enroot import -o /netscratch/$USER/n4c-eval.sqsh dockerd://n4c-eval
+# Models (~80 GB) are NOT baked in: they live in N4C_WORK/ollama_models.
+ARG BASE=nvcr.io/nvidia/pytorch:23.12-py3
+FROM ${BASE}
+ARG OLLAMA_VERSION=v0.40.16
+ENV OLLAMA_VERSION=${OLLAMA_VERSION} DEBIAN_FRONTEND=noninteractive
+COPY docker/install_in_image.sh /tmp/install_in_image.sh
+RUN bash /tmp/install_in_image.sh && rm -f /tmp/install_in_image.sh

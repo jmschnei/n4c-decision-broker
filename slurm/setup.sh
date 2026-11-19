@@ -17,7 +17,9 @@ free_gb() { df -Pk "$1" | awk 'NR==2{printf "%d", $4/1048576}'; }
 echo "free space in WORK: $(free_gb "$WORK") GB (need ~100 GB for the 7 models + Ollama)"
 
 # ---------------------------------------------------------------- 1. Python venv
-if [ -z "${SKIP_VENV:-}" ]; then
+if [ -z "${SKIP_VENV:-}" ] && "$PYTHON" -c "import httpx, rdflib" 2>/dev/null; then
+  echo "== python libs already available in this environment (image): skipping venv"
+elif [ -z "${SKIP_VENV:-}" ]; then
   if [ ! -x "$VENV/bin/python" ]; then
     "$PYTHON" -m venv "$VENV" 2>/dev/null || {  # some container images lack python3-venv
       echo "   python -m venv failed, falling back to virtualenv"
@@ -31,8 +33,10 @@ if [ -z "${SKIP_VENV:-}" ]; then
 fi
 
 # ---------------------------------------------------------------- 2. Ollama (no root)
-if [ -z "${SKIP_OLLAMA:-}" ]; then
-  if [ -x "$OLLAMA_DIR/bin/ollama" ] && "$OLLAMA_DIR/bin/ollama" --version 2>&1 | grep -q "${OLLAMA_VERSION#v}"; then
+if [ -z "${SKIP_OLLAMA:-}" ] && [ ! -x "$OLLAMA_BIN" ] && command -v ollama >/dev/null 2>&1; then
+  echo "== using ollama from the image: $(command -v ollama) ($(ollama --version 2>&1 | tail -1))"
+elif [ -z "${SKIP_OLLAMA:-}" ]; then
+  if [ -x "$OLLAMA_BIN" ] && "$OLLAMA_BIN" --version 2>&1 | grep -q "${OLLAMA_VERSION#v}"; then
     echo "== ollama $OLLAMA_VERSION already installed"
   else
     case "$(uname -m)" in x86_64|amd64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;;
@@ -45,7 +49,7 @@ if [ -z "${SKIP_OLLAMA:-}" ]; then
     for PKG in "${PKGS[@]}"; do
       echo "== downloading $PKG (~1.5 GB)"
       curl -fL --retry 3 -C - -o "$DL/$PKG" "$BASE/$PKG"
-      WANT=$(grep " $PKG\$" "$DL/sha256sum.txt" | awk '{print $1}')
+      WANT=$(awk -v p="$PKG" '{n=$2; sub(/^\.\//,"",n); if (n==p) print $1}' "$DL/sha256sum.txt")
       GOT=$( (sha256sum "$DL/$PKG" 2>/dev/null || shasum -a 256 "$DL/$PKG") | awk '{print $1}')
       [ -n "$WANT" ] && [ "$WANT" = "$GOT" ] || { echo "checksum mismatch for $PKG"; exit 1; }
       if command -v zstd >/dev/null 2>&1; then zstd -dc "$DL/$PKG" | tar -x -C "$OLLAMA_DIR"
@@ -53,7 +57,8 @@ if [ -z "${SKIP_OLLAMA:-}" ]; then
       fi
       rm -f "${DL:?}/${PKG:?}"
     done
-    echo "== installed: $("$OLLAMA_DIR/bin/ollama" --version 2>&1 | tail -1)"
+    OLLAMA_BIN="$OLLAMA_DIR/bin/ollama"
+    echo "== installed: $("$OLLAMA_BIN" --version 2>&1 | tail -1)"
   fi
 fi
 
@@ -62,19 +67,19 @@ if [ -z "${SKIP_MODELS:-}" ]; then
   mkdir -p "$OLLAMA_MODELS"
   PORT=$((20000 + RANDOM % 20000))
   export OLLAMA_HOST="127.0.0.1:$PORT"
-  "$OLLAMA_DIR/bin/ollama" serve > "$WORK/ollama_pull_server.log" 2>&1 &
+  "$OLLAMA_BIN" serve > "$WORK/ollama_pull_server.log" 2>&1 &
   SERVER=$!
   trap 'kill $SERVER 2>/dev/null || true' EXIT
   for _ in $(seq 1 60); do curl -fs "http://$OLLAMA_HOST/api/version" >/dev/null && break; sleep 1; done
   curl -fs "http://$OLLAMA_HOST/api/version" >/dev/null || { echo "ollama server did not start"; tail "$WORK/ollama_pull_server.log"; exit 1; }
   for M in "${MODELS[@]}"; do
     echo "== pulling $M"
-    for TRY in 1 2 3; do "$OLLAMA_DIR/bin/ollama" pull "$M" && break || { echo "retry $TRY"; sleep 10; }; done
+    for TRY in 1 2 3; do "$OLLAMA_BIN" pull "$M" && break || { echo "retry $TRY"; sleep 10; }; done
   done
-  "$OLLAMA_DIR/bin/ollama" list
+  "$OLLAMA_BIN" list
   MISSING=0
   for M in "${MODELS[@]}"; do
-    "$OLLAMA_DIR/bin/ollama" list | awk 'NR>1{print $1}' | grep -qx "$M" || { echo "MISSING: $M"; MISSING=1; }
+    "$OLLAMA_BIN" list | awk 'NR>1{print $1}' | grep -qx "$M" || { echo "MISSING: $M"; MISSING=1; }
   done
   [ "$MISSING" = 0 ] || exit 1
   kill $SERVER 2>/dev/null || true
