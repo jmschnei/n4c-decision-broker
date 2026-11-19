@@ -30,6 +30,8 @@ echo "== host=$(hostname) job=${SLURM_JOB_ID:-local} task=$IDX model=$MODEL shar
 command -v nvidia-smi >/dev/null && nvidia-smi -L || echo "WARNING: no NVIDIA GPU visible (CPU inference will be very slow)"
 
 [ -x "$OLLAMA_BIN" ] || { echo "Ollama not found: build the image (slurm/build_image.sh) or run slurm/setup.sh"; exit 1; }
+"$PY" -c "import httpx" 2>/dev/null || { echo "ERROR: $PY ($("$PY" --version 2>&1)) cannot import httpx."; \
+  echo "  Use an image built with slurm/build_image.sh (it installs httpx), or delete $VENV and re-run slurm/setup.sh INSIDE the container."; exit 1; }
 [ -f "$DATA_NORM/eval_sample.jsonl" ] || { echo "datasets missing: run slurm/setup.sh first"; exit 1; }
 
 # One private Ollama server per task, on a port derived from the job id.

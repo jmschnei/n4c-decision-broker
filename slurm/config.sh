@@ -21,7 +21,18 @@ VENV="$WORK/venv"
 # image (docker/install_in_image.sh puts ollama on PATH and httpx/rdflib in the system python).
 if [ -x "$OLLAMA_DIR/bin/ollama" ]; then OLLAMA_BIN="$OLLAMA_DIR/bin/ollama"
 else OLLAMA_BIN="$(command -v ollama || echo "$OLLAMA_DIR/bin/ollama")"; fi
-if [ -x "$VENV/bin/python" ]; then PY="$VENV/bin/python"; else PY="${PYTHON:-python3}"; fi
+# PY must actually be able to import httpx: a venv created outside the container points to another
+# interpreter and silently loses its packages, so test candidates instead of trusting the path.
+pick_python() {
+  local cand
+  for cand in "$VENV/bin/python" "${PYTHON:-python3}" python3 python; do
+    if command -v "$cand" >/dev/null 2>&1 && "$cand" -c "import httpx" >/dev/null 2>&1; then
+      command -v "$cand"; return 0
+    fi
+  done
+  return 1
+}
+PY="$(pick_python || true)"; [ -n "$PY" ] || PY="${PYTHON:-python3}"
 DATA_RAW="$WORK/datasets/raw"
 DATA_NORM="$WORK/datasets/normalized"
 RESULTS="$WORK/results/$RUN_NAME"

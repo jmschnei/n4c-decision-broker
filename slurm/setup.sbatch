@@ -14,7 +14,7 @@ export N4C_ROOT="${N4C_ROOT:-${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[
 if [ -n "${N4C_CONTAINER_IMAGE:-}" ] && [ -z "${N4C_IN_CONTAINER:-}" ]; then
   # shellcheck source=slurm/config.sh
   source "$N4C_ROOT/slurm/config.sh"
-  exec srun "${CONTAINER_ARGS[@]}" ${N4C_GRES:+--gres="$N4C_GRES"} --cpus-per-task="${SLURM_CPUS_PER_TASK:-1}" \
+  exec srun "${CONTAINER_ARGS[@]}" --cpus-per-task="${SLURM_CPUS_PER_TASK:-1}" \
     --export=ALL,N4C_IN_CONTAINER=1 bash "$N4C_ROOT/slurm/setup.sbatch"
 fi
 bash "$N4C_ROOT/slurm/setup.sh"

@@ -20,6 +20,9 @@ echo "free space in WORK: $(free_gb "$WORK") GB (need ~100 GB for the 7 models +
 if [ -z "${SKIP_VENV:-}" ] && "$PYTHON" -c "import httpx, rdflib" 2>/dev/null; then
   echo "== python libs already available in this environment (image): skipping venv"
 elif [ -z "${SKIP_VENV:-}" ]; then
+  if [ -x "$VENV/bin/python" ] && ! "$VENV/bin/python" -c "import httpx" 2>/dev/null; then
+    echo "   existing venv is unusable here (created elsewhere?): recreating"; rm -rf "${VENV:?}"
+  fi
   if [ ! -x "$VENV/bin/python" ]; then
     "$PYTHON" -m venv "$VENV" 2>/dev/null || {  # some container images lack python3-venv
       echo "   python -m venv failed, falling back to virtualenv"
@@ -102,7 +105,7 @@ if [ -z "${SKIP_DATA:-}" ]; then
   fetch qald10 https://raw.githubusercontent.com/KGQA/QALD-10/HEAD/LICENSE LICENSE
   fetch qald9plus https://raw.githubusercontent.com/KGQA/QALD-10/HEAD/data/qald_9_plus/qald_9_plus_train_wikidata.json qald_9_plus_train_wikidata.json
   echo "== normalizing"
-  PY="$VENV/bin/python"; [ -x "$PY" ] || PY="$PYTHON"
+  PY="$PYTHON"; "$VENV/bin/python" -c pass 2>/dev/null && PY="$VENV/bin/python"
   "$PY" -I "$N4C_ROOT/tools/normalize_datasets.py" "$DATA_RAW" "$DATA_NORM" | tail -n 12
 fi
 echo "== setup finished"
