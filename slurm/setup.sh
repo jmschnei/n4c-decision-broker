@@ -34,6 +34,14 @@ elif [ -z "${SKIP_VENV:-}" ]; then
   "$VENV/bin/pip" install -q -e "$N4C_ROOT[eval]" zstandard
   echo "== venv ready: $("$VENV/bin/python" --version)"
 fi
+# Images built before pyoxigraph was added: install it beside them (score.py reads N4C_PYLIB).
+PYX="$(pick_python || echo "$PYTHON")"
+if [ -z "${SKIP_VENV:-}" ] && ! "$PYX" -c "import pyoxigraph" 2>/dev/null \
+   && ! PYTHONPATH="$WORK/pylib" "$PYX" -c "import pyoxigraph" 2>/dev/null; then
+  echo "== installing pyoxigraph into $WORK/pylib (local Spider4SPARQL execution)"
+  "$PYX" -m pip install -q --target "$WORK/pylib" pyoxigraph \
+    || echo "   WARNING: pyoxigraph not installed; Spider4SPARQL will be scored offline only"
+fi
 
 # ---------------------------------------------------------------- 2. Ollama (no root)
 if [ -z "${SKIP_OLLAMA:-}" ] && [ ! -x "$OLLAMA_BIN" ] && command -v ollama >/dev/null 2>&1; then
@@ -98,6 +106,20 @@ if [ -z "${SKIP_DATA:-}" ]; then
   echo "== downloading datasets"
   fetch spider4sparql https://raw.githubusercontent.com/ckosten/Spider4SPARQL/HEAD/nl_sparql_pairs/dev/dev.json dev.json
   fetch spider4sparql https://raw.githubusercontent.com/ckosten/Spider4SPARQL/HEAD/LICENSE LICENSE
+  # Materialized dev KGs (~10 MB zip on Google Drive, linked from the Spider4SPARQL README):
+  # used by score.py --spider-kg to execute Spider queries locally. Only the .ttl files are kept.
+  # Known defects: orchestra.ttl is empty, wta_1.ttl is truncated (those items get excluded).
+  if [ ! -f "$DATA_RAW/spider4sparql_kg/concert_singer.ttl" ]; then
+    mkdir -p "$DATA_RAW/spider4sparql_kg_zip" "$DATA_RAW/spider4sparql_kg"
+    if curl -fsSL --retry 3 -o "$DATA_RAW/spider4sparql_kg_zip/dev_kgs.zip" \
+         "https://drive.google.com/uc?export=download&id=1S6xaI0VfnFMrsuyjxv2uQPok_CikhLLx" \
+       && unzip -tq "$DATA_RAW/spider4sparql_kg_zip/dev_kgs.zip" >/dev/null 2>&1; then
+      unzip -qo -j "$DATA_RAW/spider4sparql_kg_zip/dev_kgs.zip" 'materialized_triples/*.ttl' -d "$DATA_RAW/spider4sparql_kg"
+      echo "   spider4sparql_kg: $(ls "$DATA_RAW/spider4sparql_kg" | wc -l) KGs"
+    else
+      echo "   WARNING: could not download the Spider4SPARQL KGs (Google Drive); Spider is scored offline only"
+    fi
+  fi
   for F in instantiated_data paraphrased_data template_questions; do
     fetch golem "https://raw.githubusercontent.com/GOLEM-lab/GOLEM_Text-to-SPARQL/HEAD/dataset/$F.tsv" "$F.tsv"
   done

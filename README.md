@@ -162,9 +162,25 @@ bash slurm/submit.sh --partition gpu --time 03:00:00 --max-parallel 8
 `submit.sh` launches an array job (models x shards, one GPU each) and a scoring job that
 starts when the array ends. Useful options: `--shards N`, `--models "m1 m2"`, `--run-name`,
 `--account`, `--gres gpu:a100:1`, `--limit 20` (smoke test), `--dry-run`, `--execute`
-(also run queries on public endpoints; needs internet, see `tools/eval/score.py`).
+(also run GOLEM/QALD queries on public endpoints; needs internet, see `tools/eval/score.py`).
 Re-running the same command resumes unfinished work. Results: `$N4C_WORK/results/<run>/scores/`
 (`summary.md`, `summary.json`, `item_scores.jsonl`).
+
+Execution accuracy:
+
+- **Spider4SPARQL** runs offline on its materialized KGs (downloaded by `setup.sh` to
+  `datasets/raw/spider4sparql_kg`, loaded into Oxigraph). The scoring job uses them
+  automatically. 252/300 sampled items are executable; the KGs ship with `orchestra.ttl` empty
+  and `wta_1.ttl` truncated, and those items are reported as `exec_excluded`.
+- **QALD (Wikidata)** needs a User-Agent with contact info, or WDQS answers 403 and `score.py`
+  aborts: `export N4C_EVAL_USER_AGENT='n4c-eval/0.1 (mailto:you@institution)'`.
+- Check which gold queries are executable (and pre-fill the cache) before the GPUs are done:
+
+```bash
+python3 -I tools/eval/score.py --data datasets/normalized --gold-only --execute \
+    --spider-kg datasets/raw/spider4sparql_kg --out results/gold
+# copy results/gold/exec_cache.jsonl to $N4C_WORK/results/<run>/scores/ to reuse it
+```
 
 ### Pyxis/Enroot clusters: build the image once
 

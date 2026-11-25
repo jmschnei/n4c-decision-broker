@@ -82,3 +82,61 @@ def test_normalize_results_and_aggregate():
               "error": "x"}]
     agg = score.aggregate(items, ("model",))["m"]
     assert agg["n"] == 2 and agg["syntax_valid"] == 0.5 and agg["errors"] == 1 and agg["exec_n"] == 0
+
+
+def test_column_order_is_ignored():
+    gold = ['["97", "mazda"]', '["88", "ford"]']
+    assert score.best_column_order(gold, ['["mazda", "97"]', '["ford", "88"]']) == set(gold)
+    assert score.best_column_order(gold, ['["x", "y"]']) == {'["x", "y"]'}   # nothing better
+    assert score.best_column_order(gold, ['["97"]']) == {'["97"]'}           # other arity
+
+
+class _FakeExec:
+    """Executor stand-in: canned results per query, Spider routed to the local pseudo-endpoint."""
+    local, remote = True, True
+
+    def __init__(self, results):
+        self.results = results
+
+    def run(self, endpoint, query):
+        return self.results[query]
+
+
+def test_exec_scores_excludes_empty_and_failed_gold():
+    row = {"source": "spider4sparql", "group": "spider4sparql:kg", "sparql": "GOLD"}
+    ok = {"ok": True, "rows": {"rows": ['["1"]']}}
+    empty = {"ok": True, "rows": {"rows": []}}
+    assert score.exec_scores(_FakeExec({"GOLD": empty, "P": empty}), row, "P") == {"exec_gold_empty": True}
+    assert score.exec_scores(_FakeExec({"GOLD": {"ok": False, "error": "empty KG"}}), row, "P") \
+        == {"exec_gold_failed": True}
+    assert score.exec_scores(_FakeExec({"GOLD": ok, "P": ok}), row, "P")["exec_match"] is True
+    assert score.endpoint_for(_FakeExec({}), row) == "oxigraph:kg"
+
+
+def test_wikidata_robot_policy_aborts(tmp_path):
+    httpx = pytest.importorskip("httpx")
+    ex = score.Executor(tmp_path / "cache.jsonl")
+    ex.http = httpx.Client(transport=httpx.MockTransport(
+        lambda req: httpx.Response(403, text="Please respect our robot policy https://w.wiki/4wJS")))
+    with pytest.raises(SystemExit, match="User-Agent"):
+        ex.run("https://query.wikidata.org/sparql", "ASK {}")
+    assert not (tmp_path / "cache.jsonl").exists()  # not cached
+
+
+def test_local_kg_execution(tmp_path):
+    pytest.importorskip("pyoxigraph")
+    ns = score.SPIDER_NS
+    (tmp_path / "kg.ttl").write_text(
+        f'<{ns}singer/1> a <{ns}singer> .\n<{ns}singer/1> <{ns}singer#name> "Ann" .\n'
+        f'<{ns}singer/2> a <{ns}singer> .\n<{ns}singer/2> <{ns}singer#name> "Bo', encoding="utf-8")  # truncated
+    (tmp_path / "empty.ttl").write_text("", encoding="utf-8")
+    ex = score.Executor(tmp_path / "cache.jsonl", spider_kg=tmp_path, remote=False)
+    try:
+        r = ex.run("oxigraph:kg", "SELECT ?n WHERE { ?s a :singer ; :singer\\#name ?n }")
+        assert r == {"ok": True, "rows": {"rows": ['["Ann"]']}}
+        assert ex.run("oxigraph:kg", "ASK { ?s a :singer }") == {"ok": True, "rows": {"bool": True}}
+        assert ex.run("oxigraph:kg", "SELECT WHERE {")["error"] == "HTTP 400"
+        assert ex.run("oxigraph:empty", "ASK {}")["error"] == "empty KG"
+        assert score.endpoint_for(ex, {"source": "qald10"}) is None  # remote disabled
+    finally:
+        ex.close()

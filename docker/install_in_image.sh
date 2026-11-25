@@ -5,7 +5,7 @@
 set -euo pipefail
 
 OLLAMA_VERSION="${OLLAMA_VERSION:-v0.40.16}"
-PIP_PACKAGES="${N4C_PIP_PACKAGES:-httpx rdflib}"
+PIP_PACKAGES="${N4C_PIP_PACKAGES:-httpx rdflib pyoxigraph}"
 [ "$(id -u)" = 0 ] || { echo "must run as root inside the container (Pyxis: --container-remap-root)"; exit 1; }
 
 case "$(uname -m)" in x86_64|amd64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;;
@@ -38,5 +38,5 @@ python3 -m pip install --no-cache-dir -q $PIP_PACKAGES
 
 echo "== verifying"
 ollama --version
-python3 -c "import httpx, rdflib; print('python libs ok, httpx', httpx.__version__)"
+python3 -c "import httpx, rdflib, pyoxigraph; print('python libs ok, httpx', httpx.__version__)"
 printf 'ollama %s\npython %s\nbuilt %s\n' "$OLLAMA_VERSION" "$(python3 --version 2>&1)" "$(date -u +%FT%TZ)" > /etc/n4c-image-info

@@ -33,6 +33,7 @@ pick_python() {
   return 1
 }
 PY="$(pick_python || true)"; [ -n "$PY" ] || PY="${PYTHON:-python3}"
+[ -d "$WORK/pylib" ] && export N4C_PYLIB="$WORK/pylib"   # extra packages (pyoxigraph) for old images
 DATA_RAW="$WORK/datasets/raw"
 DATA_NORM="$WORK/datasets/normalized"
 RESULTS="$WORK/results/$RUN_NAME"

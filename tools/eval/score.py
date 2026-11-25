@@ -2,13 +2,22 @@
 """Step 2: score generated SPARQL against the gold queries.
 
     python3 tools/eval/score.py --data datasets/normalized --gen results/generation \
-        --out results/scores [--execute]
+        --out results/scores [--execute] [--spider-kg datasets/raw/spider4sparql_kg]
 
 Offline metrics (always): syntax_valid (strict W3C SPARQL 1.1; Virtuoso/GOLEM accepts some
 non-standard forms such as SELECT COUNT(..) AS ?x, which exec_match still credits), exact_match, skeleton_match, iri_precision/recall/f1,
-feature_match. With --execute (needs internet) both queries are run on the dataset's endpoint
-and result sets are compared (exec_match, exec_f1); only GOLEM and QALD have an endpoint here,
-Spider4SPARQL needs a local triplestore (not set up), so it is scored offline only.
+feature_match. Execution metrics run gold and generated queries and compare result sets
+(exec_match, exec_f1; column order ignored): --execute does it for GOLEM and QALD on their public
+endpoints (internet); --spider-kg DIR does it for Spider4SPARQL on its materialized KGs in a
+local Oxigraph store (needs `pyoxigraph`; offline, so it also works on compute nodes).
+Items whose gold query fails or returns no rows are excluded from exec metrics (counted as
+exec_excluded): an empty gold would make every empty prediction a "match".
+
+    python3 tools/eval/score.py --data datasets/normalized --gold-only [--execute] \
+        --spider-kg datasets/raw/spider4sparql_kg --out results/scores
+
+--gold-only runs just the gold queries (no generation needed): it reports which items are
+executable and pre-fills exec_cache.jsonl, which can be copied to the cluster's scores dir.
 
 Writes item_scores.jsonl (one row per model x question: the router's training table) and
 summary.json / summary.md (aggregates per model, source, complexity, language).
@@ -19,6 +28,7 @@ import argparse
 import hashlib
 import json
 import logging
+import multiprocessing as mp
 import os
 import re
 import statistics
@@ -28,6 +38,8 @@ from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # tools/
+if os.environ.get("N4C_PYLIB"):  # extra packages (pip --target) for images that lack pyoxigraph;
+    sys.path.append(os.environ["N4C_PYLIB"])  # read explicitly because -I ignores PYTHONPATH
 from normalize_datasets import _strip_strings_and_prefixes, features, skeleton  # noqa: E402
 
 logging.getLogger("rdflib").setLevel(logging.ERROR)  # URI-serialization warnings are noise here
@@ -52,6 +64,12 @@ NS = {
     "owl": "http://www.w3.org/2002/07/owl#", "skos": "http://www.w3.org/2004/02/skos/core#",
     "foaf": "http://xmlns.com/foaf/0.1/", "geo": "http://www.opengis.net/ont/geosparql#",
 }
+SPIDER_NS = "http://valuenet/ontop/"  # default ':' namespace of the Spider4SPARQL materialized KGs
+LOCAL = "oxigraph:"                   # pseudo-endpoint prefix: oxigraph:<kg name>
+
+
+class RobotPolicyError(SystemExit):
+    pass
 
 
 # ------------------------------------------------------------------ offline metrics
@@ -65,7 +83,7 @@ def syntax_valid(sparql: str, source: str) -> bool:
         return bool(re.search(r"(?i)\b(select|ask|construct|describe)\b", q)) and q.count("{") == q.count("}") > 0
     ns = dict(NS)
     if source == "spider4sparql":
-        ns[""] = "http://example.org/kg/"  # Spider KGs use ':' as default namespace
+        ns[""] = SPIDER_NS  # Spider KGs use ':' as default namespace
     try:
         prepareQuery(sparql, initNs=ns)
         return True
@@ -117,14 +135,100 @@ def offline_scores(row: dict, gen: str) -> dict:
 
 
 # ------------------------------------------------------------------ execution scoring
+def _load_kg(ox, kg_dir: str, kg: str):
+    """Load one Spider4SPARQL KG; tolerate a truncated last line (wta_1.ttl ships cut off)."""
+    store = ox.Store()
+    path = Path(kg_dir) / f"{kg}.ttl"
+    if not path.exists():
+        return store
+    data = path.read_bytes()
+    try:
+        store.load(data, format=ox.RdfFormat.TURTLE)
+    except SyntaxError:
+        store = ox.Store()
+        store.load(data[: data.rstrip(b"\n").rfind(b"\n") + 1], format=ox.RdfFormat.TURTLE)
+    return store
+
+
+def _kg_worker(kg_dir: str, conn) -> None:
+    """Child process: answers (kg, query) requests; the parent kills it on timeout."""
+    import pyoxigraph as ox
+    stores: dict = {}
+    while True:
+        msg = conn.recv()
+        if msg is None:
+            return
+        kg, query = msg
+        try:
+            if kg not in stores:
+                stores[kg] = _load_kg(ox, kg_dir, kg)
+            if len(stores[kg]) == 0:
+                conn.send({"ok": False, "error": "empty KG"})
+                continue
+            res = stores[kg].query(f"PREFIX : <{SPIDER_NS}>\n{query}")
+            if isinstance(res, ox.QueryBoolean) or isinstance(res, bool):
+                conn.send({"ok": True, "rows": {"bool": bool(res)}})
+                continue
+            if isinstance(res, ox.QuerySolutions):
+                vs = res.variables
+                rows = [[None if s[v] is None else s[v].value for v in vs] for s in res]
+            else:  # CONSTRUCT / DESCRIBE
+                rows = [[t.subject.value, t.predicate.value, t.object.value] for t in res]
+            conn.send({"ok": True, "rows": {"rows": sorted(json.dumps(r, ensure_ascii=False) for r in rows)}})
+        except SyntaxError:
+            conn.send({"ok": False, "error": "HTTP 400"})  # same label as a remote parse error
+        except Exception as exc:  # noqa: BLE001
+            conn.send({"ok": False, "error": type(exc).__name__})
+
+
+class LocalKG:
+    """Spider4SPARQL KGs in an in-memory Oxigraph store, in a worker process with a timeout."""
+
+    def __init__(self, kg_dir: Path, timeout: float = 30.0):
+        import pyoxigraph  # noqa: F401 - fail early with a clear ImportError
+        self.kg_dir, self.timeout = str(kg_dir), timeout
+        self.ctx = mp.get_context("spawn")
+        self.proc = self.conn = None
+
+    def _start(self):
+        self.conn, child = self.ctx.Pipe()
+        self.proc = self.ctx.Process(target=_kg_worker, args=(self.kg_dir, child), daemon=True)
+        self.proc.start()
+
+    def run(self, kg: str, query: str) -> dict:
+        if self.proc is None or not self.proc.is_alive():
+            self._start()
+        try:
+            self.conn.send((kg, query))
+            # first request per KG also parses it (world_1: ~38k triples, < 1 s)
+            if self.conn.poll(self.timeout):
+                return self.conn.recv()
+            error = "timeout"
+        except (EOFError, OSError):  # worker died (e.g. out of memory on a huge join)
+            error = "worker crashed"
+        self.proc.kill()
+        self.proc.join()
+        self.proc = None
+        return {"ok": False, "error": error}
+
+    def close(self):
+        if self.proc is not None and self.proc.is_alive():
+            self.conn.send(None)
+            self.proc.join(5)
+
+
 class Executor:
-    """Runs queries on public endpoints with an on-disk cache, spacing and a timeout."""
+    """Runs queries on public endpoints (or the local Spider KGs) with an on-disk cache,
+    spacing and a timeout."""
 
     def __init__(self, cache_path: Path, min_interval: float = 0.3, timeout: float = 60.0,
-                 user_agent: str = "n4c-decision-broker-eval/0.1"):
+                 user_agent: str = "n4c-decision-broker-eval/0.1", spider_kg: Path | None = None,
+                 remote: bool = True):
         import httpx
         self.http = httpx.Client(timeout=timeout, headers={
             "Accept": "application/sparql-results+json", "User-Agent": user_agent})
+        self.local = LocalKG(spider_kg) if spider_kg else None
+        self.remote = remote  # False: only the local Spider KGs (no internet needed)
         self.path, self.min_interval, self.last = cache_path, min_interval, 0.0
         self.cache: dict[str, dict] = {}
         if cache_path.exists():
@@ -139,6 +243,18 @@ class Executor:
         key = hashlib.sha256(f"{endpoint}\n{query}".encode()).hexdigest()
         if key in self.cache:
             return self.cache[key]
+        if endpoint.startswith(LOCAL):
+            res = self.local.run(endpoint[len(LOCAL):], query)  # deterministic: always cached
+        else:
+            res = self._remote(endpoint, query)
+        if endpoint.startswith(LOCAL) or res["ok"] or res["error"] == "HTTP 400":
+            # cache deterministic outcomes only (not 403/429/5xx/network errors)
+            self.cache[key] = res
+            with self.path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"key": key, "res": res}) + "\n")
+        return res
+
+    def _remote(self, endpoint: str, query: str) -> dict:
         interval = 1.0 if "wikidata.org" in endpoint else self.min_interval  # WDQS usage policy
         wait = interval - (time.time() - self.last)
         if wait > 0:
@@ -147,17 +263,23 @@ class Executor:
             r = self.http.post(endpoint, data={"query": query})
             self.last = time.time()
             if r.status_code == 200:
-                res = {"ok": True, "rows": normalize_results(r.json())}
-            else:
-                res = {"ok": False, "error": f"HTTP {r.status_code}"}
+                return {"ok": True, "rows": normalize_results(r.json())}
+            if r.status_code == 403 and "robot policy" in r.text:
+                # every Wikidata request would fail: stop instead of silently scoring exec_n=0
+                raise RobotPolicyError(
+                    f"{endpoint} rejected the User-Agent (403, robot policy https://w.wiki/4wJS).\n"
+                    "Set contact info: --user-agent 'n4c-eval/0.1 (mailto:you@institution)' or "
+                    "N4C_EVAL_USER_AGENT, or score without --execute.")
+            return {"ok": False, "error": f"HTTP {r.status_code}"}
+        except RobotPolicyError:
+            raise
         except Exception as exc:  # noqa: BLE001
             self.last = time.time()
-            res = {"ok": False, "error": type(exc).__name__}
-        if res["ok"] or res["error"] == "HTTP 400":  # cache deterministic outcomes only (not 403/429/5xx)
-            self.cache[key] = res
-            with self.path.open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps({"key": key, "res": res}) + "\n")
-        return res
+            return {"ok": False, "error": type(exc).__name__}
+
+    def close(self):
+        if self.local:
+            self.local.close()
 
 
 def normalize_results(d: dict):
@@ -169,13 +291,26 @@ def normalize_results(d: dict):
     return {"rows": rows}
 
 
+def endpoint_for(ex: Executor, row: dict) -> str | None:
+    if row["source"] == "spider4sparql":
+        return f"{LOCAL}{row['group'].split(':', 1)[-1]}" if ex.local else None
+    return ENDPOINTS.get(row["source"]) if ex.remote else None
+
+
+def gold_status(g: dict) -> str:
+    if not g["ok"]:
+        return "failed"
+    return "empty" if g["rows"] == {"rows": []} else "ok"
+
+
 def exec_scores(ex: Executor, row: dict, gen: str) -> dict:
-    ep = ENDPOINTS.get(row["source"])
+    ep = endpoint_for(ex, row)
     if not ep:
         return {}
     g = ex.run(ep, row["sparql"])
-    if not g["ok"]:
-        return {"exec_gold_failed": True}
+    status = gold_status(g)
+    if status != "ok":  # failed, or no rows: an empty prediction would "match" it
+        return {"exec_gold_failed" if status == "failed" else "exec_gold_empty": True}
     if not gen.strip():
         return {"exec_ok": False, "exec_match": False, "exec_f1": 0.0}
     o = ex.run(ep, gen)
@@ -185,9 +320,30 @@ def exec_scores(ex: Executor, row: dict, gen: str) -> dict:
     if "bool" in a or "bool" in b:
         same = a == b
         return {"exec_ok": True, "exec_match": same, "exec_f1": 1.0 if same else 0.0}
-    sa, sb = set(a["rows"]), set(b["rows"])
+    sa, sb = set(a["rows"]), best_column_order(a["rows"], b["rows"])
     _, _, f1 = prf(sb, sa)
-    return {"exec_ok": True, "exec_match": a["rows"] == b["rows"] or sa == sb, "exec_f1": f1}
+    return {"exec_ok": True, "exec_match": sa == sb, "exec_f1": f1}
+
+
+def best_column_order(gold_rows: list[str], pred_rows: list[str], max_cols: int = 5) -> set[str]:
+    """Prediction rows with their columns permuted to best match the gold ones: a correct answer
+    that just SELECTs the variables in another order still counts."""
+    pred = set(pred_rows)
+    if not gold_rows or not pred_rows or pred & set(gold_rows) == pred | set(gold_rows):
+        return pred
+    from itertools import permutations
+    parsed = [json.loads(r) for r in pred_rows]
+    ncol = len(parsed[0])
+    if ncol < 2 or ncol > max_cols or ncol != len(json.loads(gold_rows[0])):
+        return pred
+    gold = set(gold_rows)
+    best, best_tp = pred, len(pred & gold)
+    for perm in permutations(range(ncol)):
+        cand = {json.dumps([r[i] for i in perm], ensure_ascii=False) for r in parsed}
+        tp = len(cand & gold)
+        if tp > best_tp:
+            best, best_tp = cand, tp
+    return best
 
 
 # ------------------------------------------------------------------ aggregation
@@ -216,6 +372,7 @@ def aggregate(items: list[dict], keys: tuple) -> dict:
             "iri_f1": mean([r["iri_f1"] for r in rows]),
             "feature_match": mean([r["feature_match"] for r in rows]),
             "exec_n": len(ex_rows),
+            "exec_excluded": sum(1 for r in rows if r.get("exec_gold_failed") or r.get("exec_gold_empty")),
             "exec_match": mean([r["exec_match"] for r in ex_rows]),
             "exec_f1": mean([r["exec_f1"] for r in ex_rows]),
             "errors": sum(1 for r in rows if r.get("error")),
@@ -229,7 +386,7 @@ def aggregate(items: list[dict], keys: tuple) -> dict:
 
 def to_markdown(summary: dict) -> str:
     cols = ["n", "syntax_valid", "exact_match", "skeleton_match", "iri_f1", "exec_match", "exec_n",
-            "latency_p50_s", "tokens_per_s"]
+            "exec_excluded", "latency_p50_s", "tokens_per_s"]
     lines = []
     for title, key in (("Per model", "by_model"), ("Per model x source", "by_model_source"),
                        ("Per model x complexity", "by_model_complexity")):
@@ -242,14 +399,25 @@ def to_markdown(summary: dict) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--data", required=True, type=Path)
-    ap.add_argument("--gen", required=True, type=Path, help="dir with the generate.py *.jsonl outputs")
+    ap.add_argument("--gen", type=Path, help="dir with the generate.py *.jsonl outputs")
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--qald-endpoint", help="SPARQL endpoint for QALD-10 / QALD-9-plus")
     ap.add_argument("--user-agent", default=os.environ.get("N4C_EVAL_USER_AGENT", "n4c-decision-broker-eval/0.1"),
                     help="HTTP User-Agent for endpoints. Wikidata's WDQS rejects (403) agents without contact\n"
                          "info per https://w.wiki/4wJS: set e.g. 'n4c-eval/0.1 (mailto:you@institution)'")
-    ap.add_argument("--execute", action="store_true", help="also run queries on the endpoints (internet)")
+    ap.add_argument("--execute", action="store_true",
+                    help="also run GOLEM/QALD queries on their public endpoints (internet)")
+    ap.add_argument("--spider-kg", type=Path,
+                    help="dir with the Spider4SPARQL materialized KGs (<kg>.ttl): execute Spider\n"
+                         "queries locally with pyoxigraph (offline; independent of --execute)")
+    ap.add_argument("--gold-only", action="store_true",
+                    help="only execute the gold queries: report executable items, fill the cache")
+    ap.add_argument("--sources", help="comma separated subset, e.g. golem,spider4sparql (default: all)")
     args = ap.parse_args()
+    if not args.gold_only and not args.gen:
+        ap.error("--gen is required unless --gold-only")
+    if args.spider_kg and not args.spider_kg.is_dir():
+        ap.error(f"--spider-kg {args.spider_kg} is not a directory")
 
     if args.qald_endpoint:
         ENDPOINTS["qald10"] = ENDPOINTS["qald9plus"] = args.qald_endpoint
@@ -258,11 +426,53 @@ def main() -> int:
         if line:
             r = json.loads(line)
             rows[r["id"]] = r
+    if args.sources:
+        keep = set(args.sources.split(","))
+        rows = {k: r for k, r in rows.items() if r["source"] in keep}
+    args.out.mkdir(parents=True, exist_ok=True)
+    if args.gold_only and not (args.execute or args.spider_kg):
+        ap.error("--gold-only needs --execute and/or --spider-kg")
+    ex = Executor(args.out / "exec_cache.jsonl", user_agent=args.user_agent, spider_kg=args.spider_kg,
+                  remote=args.execute) if (args.execute or args.spider_kg) else None
+    try:
+        if args.gold_only:
+            return gold_check(ex, rows, args.out)
+        return score_all(args, rows, ex)
+    finally:
+        if ex:
+            ex.close()
+
+
+def gold_check(ex: Executor, rows: dict, out: Path) -> int:
+    report: dict = defaultdict(lambda: {"ok": 0, "empty": [], "failed": {}, "not_executable": 0})
+    for i, row in enumerate(sorted(rows.values(), key=lambda r: r["id"]), 1):
+        rep = report[row["source"]]
+        ep = endpoint_for(ex, row)
+        if not ep:
+            rep["not_executable"] += 1
+            continue
+        g = ex.run(ep, row["sparql"])
+        status = gold_status(g)
+        if status == "ok":
+            rep["ok"] += 1
+        elif status == "empty":
+            rep["empty"].append(row["id"])
+        else:
+            rep["failed"][row["id"]] = g["error"]
+        if i % 50 == 0:
+            print(f"  {i}/{len(rows)}", flush=True)
+    (out / "gold_check.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    print("\n| source | executable (ok) | empty gold | failed gold | no endpoint |\n|---|---|---|---|---|")
+    for src, rep in sorted(report.items()):
+        print(f"| {src} | {rep['ok']} | {len(rep['empty'])} | {len(rep['failed'])} | {rep['not_executable']} |")
+    print(f"\ndetails: {out / 'gold_check.json'}   cache: {ex.path}")
+    return 0
+
+
+def score_all(args, rows: dict, ex: Executor | None) -> int:
     gens = []
     for f in sorted(args.gen.glob("*.shard*.jsonl")):
         gens += [json.loads(l) for l in f.read_text(encoding="utf-8").splitlines() if l]
-    args.out.mkdir(parents=True, exist_ok=True)
-    ex = Executor(args.out / "exec_cache.jsonl", user_agent=args.user_agent) if args.execute else None
 
     items, missing = [], 0
     for g in gens:
@@ -284,6 +494,7 @@ def main() -> int:
         "\n".join(json.dumps(i, ensure_ascii=False) for i in items) + "\n", encoding="utf-8")
     summary = {
         "n_items": len(items), "ignored_unknown_ids": missing, "execute": bool(args.execute),
+        "spider_kg": bool(args.spider_kg),
         "by_model": aggregate(items, ("model",)),
         "by_model_source": aggregate(items, ("model", "source")),
         "by_model_complexity": aggregate(items, ("model", "complexity")),
