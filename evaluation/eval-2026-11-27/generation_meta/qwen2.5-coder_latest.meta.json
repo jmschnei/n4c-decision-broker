@@ -1,0 +1,10 @@
+{
+  "model": "qwen2.5-coder:latest",
+  "digest": "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
+  "think": false,
+  "shots": 3,
+  "max_tokens": 1024,
+  "num_ctx": 8192,
+  "temperature": 0,
+  "seed": 0
+}

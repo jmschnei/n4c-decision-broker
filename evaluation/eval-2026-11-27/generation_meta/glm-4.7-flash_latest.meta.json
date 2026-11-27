@@ -1,0 +1,10 @@
+{
+  "model": "glm-4.7-flash:latest",
+  "digest": "4475827791a269b02c8ec49b1c3bc1abb5846bacf3fae015b75d33986322d8f6",
+  "think": false,
+  "shots": 3,
+  "max_tokens": 1024,
+  "num_ctx": 8192,
+  "temperature": 0,
+  "seed": 0
+}
