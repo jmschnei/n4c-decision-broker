@@ -5,7 +5,7 @@
 set -euo pipefail
 
 OLLAMA_VERSION="${OLLAMA_VERSION:-v0.40.16}"
-PIP_PACKAGES="${N4C_PIP_PACKAGES:-httpx rdflib pyoxigraph}"
+PIP_PACKAGES="${N4C_PIP_PACKAGES:-httpx rdflib pyoxigraph==0.4.11}"
 [ "$(id -u)" = 0 ] || { echo "must run as root inside the container (Pyxis: --container-remap-root)"; exit 1; }
 
 case "$(uname -m)" in x86_64|amd64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;;

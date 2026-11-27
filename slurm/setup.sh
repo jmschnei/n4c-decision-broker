@@ -34,12 +34,15 @@ elif [ -z "${SKIP_VENV:-}" ]; then
   "$VENV/bin/pip" install -q -e "$N4C_ROOT[eval]" zstandard
   echo "== venv ready: $("$VENV/bin/python" --version)"
 fi
-# Images built before pyoxigraph was added: install it beside them (score.py reads N4C_PYLIB).
+# pyoxigraph pinned: ORDER BY ... LIMIT ties are broken by the engine's internal order, so another
+# version can change exec_match. Images without it (or with another version) get it in $WORK/pylib,
+# which score.py puts first on sys.path (N4C_PYLIB).
 PYX="$(pick_python || echo "$PYTHON")"
-if [ -z "${SKIP_VENV:-}" ] && ! "$PYX" -c "import pyoxigraph" 2>/dev/null \
-   && ! PYTHONPATH="$WORK/pylib" "$PYX" -c "import pyoxigraph" 2>/dev/null; then
-  echo "== installing pyoxigraph into $WORK/pylib (local Spider4SPARQL execution)"
-  "$PYX" -m pip install -q --target "$WORK/pylib" pyoxigraph \
+OXV=0.4.11
+if [ -z "${SKIP_VENV:-}" ] \
+   && ! PYTHONPATH="$WORK/pylib" "$PYX" -c "import pyoxigraph as o; assert o.__version__ == '$OXV'" 2>/dev/null; then
+  echo "== installing pyoxigraph $OXV into $WORK/pylib (local Spider4SPARQL execution)"
+  "$PYX" -m pip install -q --upgrade --target "$WORK/pylib" "pyoxigraph==$OXV" \
     || echo "   WARNING: pyoxigraph not installed; Spider4SPARQL will be scored offline only"
 fi
 

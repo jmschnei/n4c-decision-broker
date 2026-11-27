@@ -38,8 +38,8 @@ from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # tools/
-if os.environ.get("N4C_PYLIB"):  # extra packages (pip --target) for images that lack pyoxigraph;
-    sys.path.append(os.environ["N4C_PYLIB"])  # read explicitly because -I ignores PYTHONPATH
+if os.environ.get("N4C_PYLIB"):  # pinned extra packages (pip --target), ahead of the image's own;
+    sys.path.insert(0, os.environ["N4C_PYLIB"])  # read explicitly because -I ignores PYTHONPATH
 from normalize_datasets import _strip_strings_and_prefixes, features, skeleton  # noqa: E402
 
 logging.getLogger("rdflib").setLevel(logging.ERROR)  # URI-serialization warnings are noise here
@@ -119,6 +119,19 @@ def prf(pred: set, gold: set) -> tuple[float, float, float]:
 
 
 FEATURE_KEYS = ("aggregation", "group_by", "order_by", "filter", "optional", "union", "subquery", "ask")
+
+
+# Spider4SPARQL predicates look like :singer\#name. Models often drop the backslash, and an
+# unescaped '#' starts a SPARQL comment, so the rest of the line is lost and the query breaks.
+# The intent is unambiguous, so it is repaired before scoring (counted in `repaired`).
+_SPIDER_HASH = re.compile(r"(?<![\\<\"'\w])(:[A-Za-z_][\w-]*)#(?=[A-Za-z_])")
+
+
+def repair_sparql(sparql: str, source: str) -> str:
+    """Fix known, meaning-preserving formatting slips (currently: Spider's unescaped '#')."""
+    if source != "spider4sparql":
+        return sparql
+    return _SPIDER_HASH.sub(r"\1\\#", sparql)
 
 
 def offline_scores(row: dict, gen: str) -> dict:
@@ -377,6 +390,7 @@ def aggregate(items: list[dict], keys: tuple) -> dict:
             "exec_f1": mean([r["exec_f1"] for r in ex_rows]),
             "errors": sum(1 for r in rows if r.get("error")),
             "truncated": sum(1 for r in rows if r.get("truncated")),
+            "repaired": sum(1 for r in rows if r.get("repaired")),
             "latency_p50_s": pct([r.get("latency_s") for r in rows], 0.5),
             "latency_p95_s": pct([r.get("latency_s") for r in rows], 0.95),
             "tokens_per_s": mean([r.get("tokens_per_s") for r in rows]),
@@ -386,7 +400,7 @@ def aggregate(items: list[dict], keys: tuple) -> dict:
 
 def to_markdown(summary: dict) -> str:
     cols = ["n", "syntax_valid", "exact_match", "skeleton_match", "iri_f1", "exec_match", "exec_n",
-            "exec_excluded", "latency_p50_s", "tokens_per_s"]
+            "exec_excluded", "repaired", "latency_p50_s", "tokens_per_s"]
     lines = []
     for title, key in (("Per model", "by_model"), ("Per model x source", "by_model_source"),
                        ("Per model x complexity", "by_model_complexity")):
@@ -485,9 +499,13 @@ def score_all(args, rows: dict, ex: Executor | None) -> int:
                 "error": g.get("error"), "truncated": g.get("truncated"), "latency_s": g.get("latency_s"),
                 "output_tokens": g.get("output_tokens"), "tokens_per_s": g.get("tokens_per_s"),
                 "sparql_generated": g["sparql_generated"]}
-        item.update(offline_scores(row, g["sparql_generated"]))
+        gen = repair_sparql(g["sparql_generated"], row["source"])
+        item["repaired"] = gen != g["sparql_generated"]
+        if item["repaired"]:
+            item["sparql_scored"] = gen
+        item.update(offline_scores(row, gen))
         if ex:
-            item.update(exec_scores(ex, row, g["sparql_generated"]))
+            item.update(exec_scores(ex, row, gen))
         items.append(item)
     items.sort(key=lambda i: (i["model"], i["id"]))
     (args.out / "item_scores.jsonl").write_text(
@@ -495,6 +513,7 @@ def score_all(args, rows: dict, ex: Executor | None) -> int:
     summary = {
         "n_items": len(items), "ignored_unknown_ids": missing, "execute": bool(args.execute),
         "spider_kg": bool(args.spider_kg),
+        "pyoxigraph": __import__("pyoxigraph").__version__ if args.spider_kg else None,
         "by_model": aggregate(items, ("model",)),
         "by_model_source": aggregate(items, ("model", "source")),
         "by_model_complexity": aggregate(items, ("model", "complexity")),

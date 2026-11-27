@@ -140,3 +140,14 @@ def test_local_kg_execution(tmp_path):
         assert score.endpoint_for(ex, {"source": "qald10"}) is None  # remote disabled
     finally:
         ex.close()
+
+
+def test_repair_spider_unescaped_hash():
+    q = "SELECT ?n WHERE { ?s a :singer . ?s :singer#name ?n . FILTER(?n != 'a:b#c') }"
+    fixed = score.repair_sparql(q, "spider4sparql")
+    assert ":singer\\#name" in fixed and "'a:b#c'" in fixed          # strings untouched
+    assert score.repair_sparql(fixed, "spider4sparql") == fixed       # idempotent
+    iri = "SELECT ?n WHERE { ?s <http://valuenet/ontop/singer#name> ?n }"
+    assert score.repair_sparql(iri, "spider4sparql") == iri           # full IRIs untouched
+    assert score.repair_sparql(q, "golem") == q                       # Spider only
+    assert score.syntax_valid(fixed, "spider4sparql") and not score.syntax_valid(q, "spider4sparql")
